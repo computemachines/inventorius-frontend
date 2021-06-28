@@ -102,8 +102,8 @@ echo "---- Installing Backend ----"
 cd /root/inventory/
 git clone https://github.com/computemachines/inventory-api.git
 cd /root/inventory/inventory-api/
-chown -Rv www-data:www-data ../
-chown -Rv www-uwsgi-inventory-api:www-data .
+chown -R www-data:www-data ../
+chown -R www-uwsgi-inventory-api:www-data .
 cp inventory-api.{service,socket} /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable inventory-api.service
