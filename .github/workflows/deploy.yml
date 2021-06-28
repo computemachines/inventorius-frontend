@@ -30,7 +30,7 @@ jobs:
           ssh -T -i github_id_rsa -o UserKnownHostsFile=known_hosts root@computemachines.com << EOF
             rm inventory-frontend-package.tar.gz
             systemctl stop inventory-frontend.service
-            wget https://github.com/computemachines/inventory-frontend/releases/latest/inventory-frontend-package.tar.gz
+            wget https://github.com/computemachines/inventory-frontend/releases/latest/download/inventory-frontend-package.tar.gz
             
             cd inventory/
             rm -r node-deployment/*

@@ -5,6 +5,7 @@ EMAIL=tparker@computemachines.com
 
 cd /root
 rm -r inventory # fresh install
+rm inventory-frontend-package.tar.gz
 
 echo "---- Checking user -------"
 if ! id www-uwsgi-inventory-api &>/dev/null
@@ -73,7 +74,7 @@ fi
 # rm -rf temp-build/
 
 echo "---- Downloading Frontend Release ----"
-wget https://github.com/computemachines/inventory-frontend/releases/latest/inventory-frontend-package.tar.gz
+wget https://github.com/computemachines/inventory-frontend/releases/latest/download/inventory-frontend-package.tar.gz
 
 echo "---- Installing -----------"
 
