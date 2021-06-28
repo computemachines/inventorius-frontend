@@ -83,24 +83,24 @@ certbot certonly -n -m $EMAIL --agree-tos --standalone $DOMAINS
 
 echo "---- Installing Frontend --"
 mkdir -pv inventory/node-deployment
-pushd inventory
+cd /root/inventory/
 tar -xzf ../inventory-frontend-package.tar.gz -C node-deployment
-pushd node-deployment
+cd /root/inventory/node-deployment/
 npm ci --production
 cp -v inventory-frontend.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable inventory-frontend
-popd
 
 echo "---- Installing NGINX conf ----"
-pushd node-deployment
-cp -v inventory-nginx.conf /
-popd
+cd /root/inventory/node-deployment/
+cp -v inventory-nginx.conf /etc/nginx/sites-available/
+rm /etc/nginx/sites-enabled/default -v
+ln -sv /etc/nginx/sites-available/inventory-nginx.conf /etc/nginx/sites-enabled/inventory-nginx.conf
 
 echo "---- Installing Backend ----"
+cd /root/inventory/
 git clone https://github.com/computemachines/inventory-api.git
-pushd inventory-api
-git pull
+cd /root/inventory/inventory-api/
 chown -Rv www-data:www-data ../
 chown -Rv www-uwsgi-inventory-api:www-data .
 cp inventory-api.{service,socket} /etc/systemd/system/
@@ -108,9 +108,7 @@ systemctl daemon-reload
 systemctl enable inventory-api.service
 systemctl enable inventory-api.socket
 pip install -r requirements.txt
-popd
 
-popd
 echo "---- Starting --------------"
 systemctl start inventory-frontend
 systemctl start mongod
