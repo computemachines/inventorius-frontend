@@ -21,6 +21,8 @@ function Home() {
   if (frontloadMeta.pending) return <div>Loading</div>;
   if (frontloadMeta.error) throw new Error("API Error\n"+frontloadMeta);
   
+  const err = 1/0;
+
   return (
     <div>
       <div
