@@ -29,7 +29,7 @@ module.exports = {
     port: 8080,
     hot: "only",
     proxy: {
-      "/api/": "http://localhost:8081/",
+      "/api/": "http://localhost:8000/",
     },
   },
   module: {
