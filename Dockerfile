@@ -2,7 +2,7 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 # install dependencies
-COPY package*.json ./
+COPY package*.json .npmrc ./
 RUN npm ci
 
 # copy sources and build

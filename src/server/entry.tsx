@@ -14,7 +14,6 @@ import * as path from "path";
 import * as cors from "cors";
 
 import * as Sentry from "@sentry/node";
-import * as Tracing from "@sentry/tracing";
 
 import App from "../components/App";
 import { ApiClient } from "../api-client/api-client";
@@ -48,9 +47,9 @@ Sentry.init({
   environment: process.env.NODE_ENV,
   integrations: [
     // enable HTTP calls tracing
-    new Sentry.Integrations.Http({ tracing: true }),
+    Sentry.httpIntegration(),
     // enable Express.js middleware tracing
-    new Tracing.Integrations.Express({ app }),
+    Sentry.expressIntegration(),
   ],
 
   // Set tracesSampleRate to 1.0 to capture 100%
@@ -59,11 +58,7 @@ Sentry.init({
   tracesSampleRate: 1.0,
 });
 
-// RequestHandler creates a separate execution context using domains, so that every
-// transaction/span/breadcrumb is attached to its own Hub instance
-app.use(Sentry.Handlers.requestHandler());
-// TracingHandler creates a trace for every incoming request
-app.use(Sentry.Handlers.tracingHandler());
+// In Sentry v10+, request/tracing handling is automatic via expressIntegration
 
 /**
  * Generate HTML from template.
@@ -122,14 +117,13 @@ app.get("/*", cors(), async function (req, res) {
   });
 
   try {
-    // context contains all the attempted staticrouter state changes by <Redirect/> renders or 404s etc.
-    // after rendering <StaticRouter context={context}>...</> check context object.
-    const context: { url?: string; status?: number } = {};
+    // NOTE: In react-router v6+, StaticRouter no longer has context prop.
+    // Redirect/status code handling would require data router (createStaticHandler).
     const { rendered, data } = await frontloadServerRender({
       frontloadState,
       render: () =>
         renderToString(
-          <StaticRouter location={req.url} context={context}>
+          <StaticRouter location={req.url}>
             <FrontloadProvider initialState={frontloadState}>
               <App />
             </FrontloadProvider>
@@ -137,18 +131,8 @@ app.get("/*", cors(), async function (req, res) {
         ),
     });
 
-    if (context.url) {
-      // somewhere in StaticRouter component tree, there was a <Redirect/> rendered
-      if (context.status) res.redirect(context.status, context.url);
-      else res.redirect(context.url);
-    }
-
     const complete_page = htmlTemplate(rendered, data, dev, noclient);
-
-    // if rendered a status code, return rendered output with that status code
-    if (context.status) res.status(context.status).send(complete_page);
-    // otherwise just return the rendered output with default status code (200?)
-    else res.send(complete_page);
+    res.send(complete_page);
   } catch (err) {
     console.log("server render thrown exception");
     Sentry.captureException(err);
@@ -157,6 +141,6 @@ app.get("/*", cors(), async function (req, res) {
 });
 
 // The error handler must be before any other error middleware and after all controllers
-app.use(Sentry.Handlers.errorHandler());
+Sentry.setupExpressErrorHandler(app);
 
 app.listen(port);

@@ -51,11 +51,11 @@ function DataCell({
       break;
 
     case ".truncated":
-      return <td className="truncated">{value}</td>;
+      return <td className="truncated">{value as React.ReactNode}</td>;
       break;
 
     default:
-      return <td>{value}</td>;
+      return <td>{value as React.ReactNode}</td>;
       break;
   }
 }

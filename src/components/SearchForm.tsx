@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useState } from "react";
-import { useHistory, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { parse, stringify } from "query-string";
 
 // import "../styles/infoPanel.css";
@@ -9,7 +9,7 @@ import SearchResults from "./SearchResults";
 
 function SearchForm() {
   const location = useLocation();
-  const history = useHistory();
+  const navigate = useNavigate();
   const urlQuery = parse(location.search).query as string;
   const page = parseInt(parse(location.search).page as string);
   const [liveQuery, setLiveQuery] = useState(urlQuery);
@@ -29,7 +29,7 @@ function SearchForm() {
         query={liveQuery}
         page={page || 1}
         unsetPage={() => {
-          history.push("/search?" + stringify({ urlQuery }));
+          navigate("/search?" + stringify({ urlQuery }));
         }}
       />
     </div>

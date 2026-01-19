@@ -8,12 +8,12 @@ import "../styles/form.css";
 import { json } from "express";
 import ItemLabel from "./ItemLabel";
 import { parse, stringifyUrl } from "query-string";
-import { generatePath, useHistory, useLocation } from "react-router-dom";
+import { generatePath, useNavigate, useLocation } from "react-router-dom";
 // import "../styles/Receive.css"
 
 function Receive() {
   const location = useLocation();
-  const history = useHistory();
+  const navigate = useNavigate();
   const api = useContext(ApiContext);
   const { setToastContent: setAlertContent } = useContext(ToastContext);
 
@@ -66,7 +66,7 @@ function Receive() {
           setItemIdValue("");
           setIntoIdValue("");
           setQuantityValue("1");
-          if (location.search) history.push("/receive");
+          if (location.search) navigate("/receive");
         } else {
           setAlertContent({
             content: <div>{resp.title}</div>,

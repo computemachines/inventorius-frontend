@@ -5,8 +5,7 @@ import * as Sentry from "@sentry/react";
 import {
   generatePath,
   Link,
-  Prompt,
-  useHistory,
+  useNavigate,
   useParams,
 } from "react-router-dom";
 import { ApiContext, FrontloadContext } from "../api-client/api-client";
@@ -28,7 +27,7 @@ import PropertiesTable, {
 import WarnModal from "./WarnModal";
 
 function Batch({ editable = false }: { editable?: boolean }) {
-  const history = useHistory();
+  const navigate = useNavigate();
   const { id: batch_id } = useParams<{ id: string }>();
 
   const [showModal, setShowModal] = useState(false);
@@ -180,10 +179,7 @@ function Batch({ editable = false }: { editable?: boolean }) {
 
   return (
     <div className="info-panel">
-      <Prompt
-        message="Leave without saving changes?"
-        when={saveState != "live"}
-      />
+      {/* TODO: Add useBlocker for unsaved changes warning (requires data router) */}
       <WarnModal
         showModal={showModal}
         setShowModal={setShowModal}
@@ -294,7 +290,7 @@ function Batch({ editable = false }: { editable?: boolean }) {
               <button
                 className="edit-controls-cancel-button"
                 onClick={(e) => {
-                  history.push(generatePath("/batch/:id", { id: batch_id }));
+                  navigate(generatePath("/batch/:id", { id: batch_id }));
                 }}
               >
                 Cancel
@@ -350,7 +346,7 @@ function Batch({ editable = false }: { editable?: boolean }) {
                       parentSku: updatedParentSku,
                       batchBins: updatedBatchBins,
                     }));
-                    history.push(generatePath("/batch/:id", { id: batch_id }));
+                    navigate(generatePath("/batch/:id", { id: batch_id }));
                   }
                 }}
               >

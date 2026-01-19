@@ -15,6 +15,7 @@ import {
   Batch,
   ApiStatus,
   Status,
+  Stats,
 } from "./data-models";
 
 export interface FrontloadContext {
@@ -61,6 +62,14 @@ export class ApiClient {
     const resp = await fetch(`${this.hostname}/api/status`);
     if (!resp.ok) throw Error(`${this.hostname}/api/status returned error code`);
     return new ApiStatus({ ... await resp.json(), hostname: this.hostname });
+  }
+
+
+  async getStats(): Promise<Stats> {
+    const resp = await fetch(`${this.hostname}/api/stats`);
+    if (!resp.ok) throw Error(`${this.hostname}/api/stats returned error code`);
+    const json = await resp.json();
+    return { ...json, kind: "stats" };
   }
 
 

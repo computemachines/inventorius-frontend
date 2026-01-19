@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useEffect } from "react";
-import { useHistory } from "react-router";
+import { useNavigate } from "react-router";
 import { useFrontload } from "react-frontload";
 import { ApiContext, FrontloadContext } from "../api-client/api-client";
 import {
@@ -89,7 +89,7 @@ function SearchResults({
   );
 
   const api = React.useContext(ApiContext);
-  const history = useHistory();
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = React.useState(false);
 
   // Update search results when query changes.
@@ -124,7 +124,7 @@ function SearchResults({
   useEffect(() => {
     const urlParams = page == 1 ? { query } : { query, page };
     const timer = setTimeout(() => {
-      history.push(stringifyUrl({ url: "/search", query: urlParams }));
+      navigate(stringifyUrl({ url: "/search", query: urlParams }));
     }, 10000);
     return () => clearTimeout(timer);
   });
@@ -148,7 +148,7 @@ function SearchResults({
         searchResults={data.searchResults}
         loading={isLoading}
         onClickLink={(e) =>
-          history.push(
+          navigate(
             stringifyUrl({
               url: "/search",
               query: page == 1 ? { query } : { query, page },

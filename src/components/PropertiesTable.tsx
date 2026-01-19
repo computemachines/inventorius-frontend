@@ -99,7 +99,7 @@ function PropertyRow({
   return (
     <>
       <div className="properties-table__name">{property.name}</div>
-      <div className="properties-table__value">{property.typed.value}</div>
+      <div className="properties-table__value">{String(property.typed.value)}</div>
     </>
   );
 }

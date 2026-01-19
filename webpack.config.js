@@ -28,9 +28,9 @@ module.exports = {
     historyApiFallback: true,
     port: 8080,
     hot: "only",
-    proxy: {
-      "/api/": "http://localhost:8000/",
-    },
+    proxy: [
+      { context: ["/api"], target: "http://localhost:8000" }
+    ],
   },
   module: {
     rules: [
@@ -57,7 +57,7 @@ module.exports = {
       },
       {
         test: /\.css$/,
-        use: ["style-loader", "css-loader"],
+        use: ["style-loader", "css-loader", "postcss-loader"],
       },
       {
         test: /\.svg$/,

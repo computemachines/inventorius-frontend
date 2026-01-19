@@ -2,7 +2,7 @@ import { parse, stringifyUrl } from "query-string";
 import * as React from "react";
 import { useContext, useState, useRef, useEffect } from "react";
 import { useFrontload } from "react-frontload";
-import { useHistory, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { ApiContext, FrontloadContext } from "../api-client/api-client";
 import * as Sentry from "@sentry/react";
 
@@ -16,7 +16,7 @@ import PrintButton from "./PrintButton";
 function NewBatch() {
   const location = useLocation();
   const queryParentSkuId = (parse(location.search).parent as string) || "";
-  const history = useHistory();
+  const navigate = useNavigate();
 
   const { data, frontloadMeta, setData } = useFrontload(
     "new-batch-component",
@@ -56,7 +56,7 @@ function NewBatch() {
   function clearForm() {
     // setParentSkuId("");
     if (parentSkuId != queryParentSkuId) {
-      history.push(
+      navigate(
         stringifyUrl({ url: "/new/batch", query: { parent: parentSkuId } })
       );
     }

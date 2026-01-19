@@ -8,11 +8,11 @@ import "../styles/form.css";
 import { json } from "express";
 import ItemLabel from "./ItemLabel";
 import { parse, stringifyUrl } from "query-string";
-import { generatePath, useHistory, useLocation } from "react-router-dom";
+import { generatePath, useNavigate, useLocation } from "react-router-dom";
 
 function Release() {
   const location = useLocation();
-  const history = useHistory();
+  const navigate = useNavigate();
   const api = useContext(ApiContext);
   const { setToastContent: setAlertContent } = useContext(ToastContext);
 
@@ -63,7 +63,7 @@ function Release() {
           setFromIdValue("");
           setItemIdValue("");
           setQuantityValue("1");
-          if (location.search) history.push("/release");
+          if (location.search) navigate("/release");
         } else {
           setAlertContent({
             content: <div>{resp.title}</div>,

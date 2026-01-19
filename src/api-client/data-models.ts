@@ -140,6 +140,17 @@ export class ApiStatus extends RestEndpoint {
   };
 }
 
+export interface Stats {
+  kind: "stats";
+  counts: {
+    bins: number;
+    skus: number;
+    batches: number;
+  };
+  recent_bins: Array<{ id: string; props: Record<string, unknown> }>;
+  recent_skus: Array<{ id: string; name: string }>;
+}
+
 export interface BinState {
   id: string;
   contents: Record<string, number>;

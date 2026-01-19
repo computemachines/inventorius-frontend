@@ -1,5 +1,5 @@
 import * as React from "react";
-import * as ReactDOM from "react-dom";
+import { createRoot, hydrateRoot } from "react-dom/client";
 // import ReactModal from "react-modal";
 import {
   createFrontloadState,
@@ -8,7 +8,6 @@ import {
 } from "react-frontload";
 import App from "../components/App";
 import * as Sentry from "@sentry/react";
-import { Integrations } from "@sentry/tracing";
 import { BrowserRouter } from "react-router-dom";
 import { ApiContext, ApiClient } from "../api-client/api-client";
 
@@ -36,7 +35,7 @@ declare global {
 function init_sentry() {
   Sentry.init({
     dsn: "https://b694aa8379e140ab9e94b4e906b17768@o1103275.ingest.sentry.io/6148115",
-    integrations: [new Integrations.BrowserTracing()],
+    integrations: [Sentry.browserTracingIntegration()],
     release: process.env.VERSION,
     environment: process.env.NODE_ENV,
     tracesSampleRate: 1.0,
@@ -88,9 +87,9 @@ function initialize_app() {
       logging: window.__DEV_MODE,
     });
 
-    ReactDOM.hydrate(
-      <ClientApp frontloadState={frontloadState} />,
-      document.getElementById("react-root")
+    hydrateRoot(
+      document.getElementById("react-root")!,
+      <ClientApp frontloadState={frontloadState} />
     );
   } else {
     // rendering fresh without server preloading/prerendering
@@ -104,20 +103,15 @@ function initialize_app() {
     });
     frontloadState.setFirstRenderDoneOnClient();
 
-    ReactDOM.render(
-      <ClientApp frontloadState={frontloadState} />,
-      document.getElementById("react-root")
-    );
+    const root = createRoot(document.getElementById("react-root")!);
+    root.render(<ClientApp frontloadState={frontloadState} />);
 
     if (module.hot) {
       // hot module reloading (HMR).
       // don't understand this, but it seems to work. see webpack configs for HMR plugin
       module.hot.accept("../components/App.tsx", function () {
         console.log("Accepted new module");
-        ReactDOM.render(
-          <ClientApp frontloadState={frontloadState} />,
-          document.getElementById("react-root")
-        );
+        root.render(<ClientApp frontloadState={frontloadState} />);
       });
     }
   }

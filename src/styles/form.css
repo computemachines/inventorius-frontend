@@ -24,6 +24,9 @@
 .form-single-code-input {
   flex-grow: 1;
   padding: 0.4em;
+  border: 1px solid #9ca3af;
+  border-radius: 0.25rem;
+  background-color: white;
 }
 
 .form-print-button {

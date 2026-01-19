@@ -2,11 +2,12 @@ import "core-js/features/object";
 
 import * as React from "react";
 import { ReactNode, useState } from "react";
-import { Route, Switch, Link } from "react-router-dom";
+import { Route, Routes, Link } from "react-router-dom";
 import * as Sentry from "@sentry/react";
 
 import ReactModal from "react-modal";
 
+import "../styles/tailwind.css";
 import "normalize.css";
 import "../styles/accessibility.css";
 import "../styles/App.css";
@@ -62,56 +63,24 @@ function App() {
               >
                 {toastContent.content}
               </Toast>
-              <Switch>
-                <Route exact path="/">
-                  <Home />
-                </Route>
-                <Route path="/new/bin">
-                  <NewBin />
-                </Route>
-                <Route path="/new/sku">
-                  <NewSku />
-                </Route>
-                <Route path="/new/batch">
-                  <NewBatch />
-                </Route>
-                <Route path="/bin/:id">
-                  <Bin />
-                </Route>
-                <Route path="/sku/:id/edit">
-                  <Sku editable />
-                </Route>
-                <Route path="/sku/:id">
-                  <Sku />
-                </Route>
-                <Route path="/batch/:id/edit">
-                  <Batch editable />
-                </Route>
-                <Route path="/batch/:id">
-                  <Batch />
-                </Route>
-                <Route path="/receive">
-                  <Receive />
-                </Route>
-                <Route path="/release">
-                  <Release />
-                </Route>
-                <Route path="/audit">
-                  <Audit />
-                </Route>
-                <Route path="/move">
-                  <MoveItem />
-                </Route>
-                <Route path="/search">
-                  <SearchForm />
-                </Route>
-                <Route path="/legal">
-                  <EULA />
-                </Route>
-                <Route>
-                  <FourOhFour />
-                </Route>
-              </Switch>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/new/bin" element={<NewBin />} />
+                <Route path="/new/sku" element={<NewSku />} />
+                <Route path="/new/batch" element={<NewBatch />} />
+                <Route path="/bin/:id" element={<Bin />} />
+                <Route path="/sku/:id/edit" element={<Sku editable />} />
+                <Route path="/sku/:id" element={<Sku />} />
+                <Route path="/batch/:id/edit" element={<Batch editable />} />
+                <Route path="/batch/:id" element={<Batch />} />
+                <Route path="/receive" element={<Receive />} />
+                <Route path="/release" element={<Release />} />
+                <Route path="/audit" element={<Audit />} />
+                <Route path="/move" element={<MoveItem />} />
+                <Route path="/search" element={<SearchForm />} />
+                <Route path="/legal" element={<EULA />} />
+                <Route path="*" element={<FourOhFour />} />
+              </Routes>
             </ToastContext.Provider>
           </Sentry.ErrorBoundary>
         </div>

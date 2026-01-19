@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useFrontload } from "react-frontload";
-import { generatePath, Prompt, useHistory, useParams } from "react-router-dom";
+import { generatePath, useNavigate, useParams } from "react-router-dom";
 import { ApiContext, FrontloadContext } from "../api-client/api-client";
 import { Sku as ApiSku } from "../api-client/data-models";
 import ReactModal from "react-modal";
@@ -34,7 +34,7 @@ function Sku({ editable = false }: { editable?: boolean }) {
   const [saveState, setSaveState] = useState<"live" | "unsaved" | "saving">(
     "live"
   );
-  const history = useHistory();
+  const navigate = useNavigate();
   const [unsavedName, setUnsavedName] = useState("");
   const [unsavedCodes, setUnsavedCodes] = useState([]);
   const api = useContext(ApiContext);
@@ -83,10 +83,7 @@ function Sku({ editable = false }: { editable?: boolean }) {
 
   return (
     <div className="info-panel">
-      <Prompt
-        message="Leave without saving changes?"
-        when={saveState != "live"}
-      />
+      {/* TODO: Add useBlocker for unsaved changes warning (requires data router) */}
       <ReactModal
         isOpen={showModal}
         onRequestClose={() => setShowModal(false)}
@@ -181,7 +178,7 @@ function Sku({ editable = false }: { editable?: boolean }) {
           <button
             className="edit-controls-cancel-button"
             onClick={(e) => {
-              history.push(generatePath("/sku/:id", { id }));
+              navigate(generatePath("/sku/:id", { id }));
             }}
           >
             Cancel
@@ -221,7 +218,7 @@ function Sku({ editable = false }: { editable?: boolean }) {
                   skuBins,
                 }));
 
-                history.push(generatePath("/sku/:id", { id }));
+                navigate(generatePath("/sku/:id", { id }));
               }
             }}
             disabled={saveState == "saving"}

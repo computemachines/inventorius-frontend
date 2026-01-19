@@ -1,19 +1,14 @@
 import * as React from "react";
-import { Route } from "react-router-dom";
 
+// NOTE: In react-router v6+, setting status codes for SSR requires data routers.
+// This simplified version just renders children. SSR status code functionality
+// would need to be reimplemented using createBrowserRouter/createStaticRouter.
 export default function Status({
   code,
   children,
 }: {
   code: number;
-  children: JSX.Element | JSX.Element[];
-}): JSX.Element {
-  return (
-    <Route
-      render={({ staticContext }) => {
-        if (staticContext) staticContext.statusCode = code;
-        return children;
-      }}
-    />
-  );
+  children: React.ReactNode;
+}): React.ReactElement {
+  return <>{children}</>;
 }

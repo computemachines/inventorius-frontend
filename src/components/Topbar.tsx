@@ -10,7 +10,7 @@ function Topbar({
 }: {
   isActive: boolean;
   setActive: (isActive: boolean) => void;
-}): JSX.Element {
+}): React.ReactElement {
   return (
     <div className="top-bar">
       <div className="branding">

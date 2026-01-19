@@ -95,7 +95,7 @@ function BinContentsTable({
     />
   );
 }
-function Bin(): JSX.Element {
+function Bin(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const { data, frontloadMeta } = useFrontload(
     "bin-component",
