@@ -22,6 +22,7 @@ import { FourOhFour } from "./FourOhFour";
 import SearchForm from "./SearchForm";
 import Sku from "./Sku";
 import NewSku from "./NewSku";
+import NewSkuFormDynamic from "./NewSkuFormDynamic";
 import EULA from "./EULA";
 import NewBatch from "./NewBatch";
 import Batch from "./Batch";
@@ -67,6 +68,7 @@ function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/new/bin" element={<NewBin />} />
                 <Route path="/new/sku" element={<NewSku />} />
+                <Route path="/new/sku/dynamic" element={<NewSkuFormDynamic />} />
                 <Route path="/new/batch" element={<NewBatch />} />
                 <Route path="/bin/:id" element={<Bin />} />
                 <Route path="/sku/:id/edit" element={<Sku editable />} />

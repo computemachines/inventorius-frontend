@@ -86,7 +86,7 @@ function NewSku() {
         }
       }}
     >
-      <h2 className="form-title">New Sku</h2>
+      <h2 className="m-3">New Sku</h2>
       <label htmlFor="sku_id" className="form-label">
         Sku Label
       </label>

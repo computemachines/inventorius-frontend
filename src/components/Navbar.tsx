@@ -37,6 +37,9 @@ function Navbar({
         <NavLink className="navlink" to="/new/sku">
           New SKU
         </NavLink>
+        <NavLink className="navlink" to="/new/sku/dynamic">
+          New SKU (Dynamic)
+        </NavLink>
         <NavLink className="navlink" to="/new/batch">
           New Batch
         </NavLink>

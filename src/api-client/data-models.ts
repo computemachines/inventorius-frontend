@@ -325,38 +325,102 @@ export function isBatchState(result: SearchResult): result is BatchState {
   return result.id.startsWith("BAT");
 }
 
-// type Sku = {
-//   id: string;
-//   ownedCodes?: Array<string>;
-//   associatedCodes?: Array<string>;
-//   name?: string;
-//   props?: Props;
-// };
+// =============================================================================
+// Schema Types (for adaptive typeahead / dynamic form)
+// =============================================================================
 
-// export function Sku(json: Sku): void {
-//   this.id = json.id;
-//   this.ownedCodes = json.ownedCodes || [];
-//   this.associatedCodes = json.associatedCodes || [];
-//   this.name = json.name;
-//   this.props = json.props;
-// }
-// Sku.prototype.toJson = null;
+/**
+ * Field types for dynamic form generation
+ */
+export type FieldType = "text" | "number" | "enum" | "unit";
 
-// type Batch = {
-//   id: string;
-//   skuId?: string;
-//   ownedCodes?: Array<string>;
-//   associatedCodes?: Array<string>;
-//   name?: string;
-//   props?: Props;
-// };
+/**
+ * A single attribute/field in a category or mixin
+ */
+export interface SchemaField {
+  name: string;
+  label: string;
+  type: FieldType;
+  required?: boolean;
+  /** For enum type: the allowed values */
+  options?: string[];
+  /** For unit type: the unit suffix (e.g., "Ω", "ppm/°C") */
+  unit?: string;
+  /** Default value */
+  default?: string | number;
+}
 
-// export function Batch(json: Batch): void {
-//   this.id = json.id;
-//   this.skuId = json.skuId;
-//   this.ownedCodes = json.ownedCodes || [];
-//   this.associatedCodes = json.associatedCodes || [];
-//   this.name = json.name;
-//   this.props = json.props;
-// }
-// Batch.prototype.toJson = null;
+/**
+ * A category defines a type of item with its attributes
+ */
+export interface Category {
+  id: string;
+  name: string;
+  /** Fields that appear for all items in this category */
+  fields: SchemaField[];
+  /** Which field triggers mixin selection (e.g., "package") */
+  mixinTriggerField?: string;
+}
+
+/**
+ * A mixin adds additional fields based on some attribute value
+ * (e.g., package=SMD adds tempCoeff field)
+ */
+export interface Mixin {
+  id: string;
+  name: string;
+  /** The trigger field value that activates this mixin */
+  triggerValue: string;
+  /** Additional fields this mixin adds */
+  fields: SchemaField[];
+}
+
+/**
+ * Intersection fields: appear when both a category AND a mixin are active
+ * (e.g., Resistor + SMD gets tempCoeff)
+ */
+export interface IntersectionFields {
+  categoryId: string;
+  mixinId: string;
+  fields: SchemaField[];
+}
+
+/**
+ * Result from category search
+ */
+export interface CategorySearchResult {
+  kind: "category-search-result";
+  categories: Category[];
+}
+
+/**
+ * Result from mixin search (given a category and trigger field value)
+ */
+export interface MixinSearchResult {
+  kind: "mixin-search-result";
+  mixins: Mixin[];
+  intersectionFields: SchemaField[];
+}
+
+// =============================================================================
+// Code Label Types
+// =============================================================================
+
+/**
+ * Reference to an entity that shares a code
+ */
+export interface CodeUsageRef {
+  type: "sku" | "batch";
+  id: string;
+  name?: string;
+  relationship: "owned" | "associated";
+}
+
+/**
+ * Result from code usage lookup - shows what other entities share a code
+ */
+export interface CodeUsageResult {
+  kind: "code-usage-result";
+  code: string;
+  usedBy: CodeUsageRef[];
+}
