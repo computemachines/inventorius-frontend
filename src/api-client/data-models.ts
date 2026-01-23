@@ -403,6 +403,66 @@ export interface MixinSearchResult {
 }
 
 // =============================================================================
+// Unified Trigger Field Model
+// =============================================================================
+
+/**
+ * An AttributeBundle is a named collection of fields that can be activated.
+ * This unifies the concepts of "Category" and "Mixin" into a single model.
+ *
+ * Examples:
+ * - SKU "Resistor" bundle: activated by typing "Resistor" in Item Type field
+ * - SKU "SMD" bundle: activated by selecting "0402" in Package field
+ * - Batch "DigiKey" bundle: activated by typing "DigiKey" in Source field
+ */
+export interface AttributeBundle {
+  id: string;
+  name: string;
+  /** Fields contributed by this bundle */
+  fields: SchemaField[];
+}
+
+/**
+ * How a trigger field activates bundles
+ */
+export type TriggerMatchType = "typeahead" | "exact";
+
+/**
+ * A field that, when filled, can activate additional bundles/fields.
+ * Extends SchemaField with trigger capabilities.
+ */
+export interface TriggerFieldDef {
+  name: string;
+  label: string;
+  /** How to match: typeahead (prefix search) or exact (value match) */
+  matchType: TriggerMatchType;
+  /** Placeholder text for the input */
+  placeholder?: string;
+}
+
+/**
+ * Result from a bundle lookup (unified replacement for CategorySearchResult and MixinSearchResult)
+ */
+export interface BundleLookupResult {
+  kind: "bundle-lookup-result";
+  /** Matched bundles */
+  bundles: AttributeBundle[];
+  /** Intersection fields from active bundle combinations */
+  intersectionFields: SchemaField[];
+}
+
+/**
+ * Context for bundle lookups - tracks which bundles are currently active
+ * so we can compute intersections
+ */
+export interface BundleContext {
+  /** Entity type: "sku" or "batch" */
+  entityType: "sku" | "batch";
+  /** Currently active bundle IDs */
+  activeBundleIds: string[];
+}
+
+// =============================================================================
 // Code Label Types
 // =============================================================================
 

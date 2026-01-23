@@ -23,6 +23,11 @@ import {
   MixinSearchResult,
   CodeUsageResult,
   CodeUsageRef,
+  // Unified trigger field model
+  AttributeBundle,
+  TriggerFieldDef,
+  BundleLookupResult,
+  BundleContext,
 } from "./data-models";
 
 // =============================================================================
@@ -122,6 +127,161 @@ const MOCK_INTERSECTIONS: Record<string, Record<string, SchemaField[]>> = {
       { name: "dielectric", label: "Dielectric", type: "enum", options: ["C0G", "X5R", "X7R", "Y5V"] },
     ],
   },
+};
+
+// =============================================================================
+// Unified Bundle Mock Data
+// =============================================================================
+
+/**
+ * Trigger field definitions for each entity type.
+ * These define which fields in the form can trigger bundle lookups.
+ */
+const TRIGGER_FIELDS: Record<string, TriggerFieldDef[]> = {
+  sku: [
+    {
+      name: "itemType",
+      label: "Item Type",
+      matchType: "typeahead",
+      placeholder: "Resistor, Capacitor, Battery...",
+    },
+    // Note: "package" trigger is defined within item type bundles
+  ],
+  batch: [
+    {
+      name: "source",
+      label: "Source",
+      matchType: "typeahead",
+      placeholder: "DigiKey, Amazon, eBay...",
+    },
+  ],
+};
+
+/**
+ * SKU Item Type bundles (replaces MOCK_CATEGORIES conceptually)
+ */
+const SKU_ITEM_TYPE_BUNDLES: AttributeBundle[] = [
+  {
+    id: "resistor",
+    name: "Resistor",
+    fields: [
+      { name: "resistance", label: "Resistance", type: "unit", unit: "Ω", required: true },
+      { name: "tolerance", label: "Tolerance", type: "enum", options: ["1%", "5%", "10%"], default: "5%" },
+      { name: "package", label: "Package", type: "enum", options: ["0201", "0402", "0603", "0805", "1206", "through-hole"] },
+    ],
+  },
+  {
+    id: "capacitor",
+    name: "Capacitor",
+    fields: [
+      { name: "capacitance", label: "Capacitance", type: "unit", unit: "F", required: true },
+      { name: "voltage", label: "Voltage Rating", type: "unit", unit: "V" },
+      { name: "package", label: "Package", type: "enum", options: ["0201", "0402", "0603", "0805", "1206", "through-hole", "radial"] },
+    ],
+  },
+  {
+    id: "resonator",
+    name: "Resonator",
+    fields: [
+      { name: "frequency", label: "Frequency", type: "unit", unit: "Hz", required: true },
+      { name: "package", label: "Package", type: "enum", options: ["SMD", "through-hole"] },
+    ],
+  },
+  {
+    id: "resin",
+    name: "Resin",
+    fields: [
+      { name: "resinType", label: "Resin Type", type: "enum", options: ["epoxy", "polyester", "polyurethane"] },
+      { name: "volume", label: "Volume", type: "unit", unit: "mL" },
+    ],
+  },
+];
+
+/**
+ * SKU Package bundles (triggered by package field value)
+ */
+const SKU_PACKAGE_BUNDLES: AttributeBundle[] = [
+  {
+    id: "smd",
+    name: "SMD Package",
+    fields: [],  // SMD itself adds no fields; intersection with item type adds fields
+  },
+  {
+    id: "through-hole",
+    name: "Through-hole Package",
+    fields: [
+      { name: "wireGauge", label: "Wire Gauge", type: "unit", unit: "AWG" },
+    ],
+  },
+];
+
+/**
+ * Mapping from package field values to bundle IDs
+ */
+const PACKAGE_VALUE_TO_BUNDLE: Record<string, string> = {
+  "0201": "smd",
+  "0402": "smd",
+  "0603": "smd",
+  "0805": "smd",
+  "1206": "smd",
+  "SMD": "smd",
+  "through-hole": "through-hole",
+  "radial": "through-hole",  // radial is through-hole style
+};
+
+/**
+ * Batch Source bundles
+ */
+const BATCH_SOURCE_BUNDLES: AttributeBundle[] = [
+  {
+    id: "digikey",
+    name: "DigiKey",
+    fields: [
+      { name: "orderNumber", label: "Order Number", type: "text" },
+      { name: "shipDate", label: "Ship Date", type: "text" },
+      { name: "costPerUnit", label: "Cost/Unit", type: "unit", unit: "$" },
+    ],
+  },
+  {
+    id: "amazon",
+    name: "Amazon",
+    fields: [
+      { name: "orderId", label: "Order ID", type: "text" },
+      { name: "deliveryDate", label: "Delivery Date", type: "text" },
+      { name: "returnDeadline", label: "Return Deadline", type: "text" },
+    ],
+  },
+  {
+    id: "ebay",
+    name: "eBay",
+    fields: [
+      { name: "listingId", label: "Listing ID", type: "text" },
+      { name: "sellerRating", label: "Seller Rating", type: "text" },
+      { name: "conditionNotes", label: "Condition Notes", type: "text" },
+    ],
+  },
+  {
+    id: "mouser",
+    name: "Mouser",
+    fields: [
+      { name: "orderNumber", label: "Order Number", type: "text" },
+      { name: "shipDate", label: "Ship Date", type: "text" },
+      { name: "costPerUnit", label: "Cost/Unit", type: "unit", unit: "$" },
+    ],
+  },
+];
+
+/**
+ * Intersection fields for bundle combinations
+ * Key format: "bundleId1:bundleId2" (alphabetically sorted)
+ */
+const BUNDLE_INTERSECTIONS: Record<string, SchemaField[]> = {
+  "resistor:smd": [
+    { name: "tempCoeff", label: "Temp Coefficient", type: "unit", unit: "ppm/°C" },
+  ],
+  "capacitor:smd": [
+    { name: "dielectric", label: "Dielectric", type: "enum", options: ["C0G", "X5R", "X7R", "Y5V"] },
+  ],
 };
 
 /**
@@ -477,6 +637,147 @@ export class ApiClient {
   async getAllCategories(): Promise<Category[]> {
     await new Promise(resolve => setTimeout(resolve, 30));
     return MOCK_CATEGORIES;
+  }
+
+  // ===========================================================================
+  // Unified Bundle Methods (new trigger field model)
+  // ===========================================================================
+
+  /**
+   * Get trigger field definitions for an entity type
+   */
+  getTriggerFields(entityType: "sku" | "batch"): TriggerFieldDef[] {
+    return TRIGGER_FIELDS[entityType] || [];
+  }
+
+  /**
+   * Search bundles by name (typeahead).
+   * Used for trigger fields with matchType="typeahead".
+   *
+   * @param entityType - "sku" or "batch"
+   * @param fieldName - which trigger field (e.g., "itemType", "source")
+   * @param query - search query (prefix match)
+   * @param context - current bundle context for computing intersections
+   */
+  async searchBundles(
+    entityType: "sku" | "batch",
+    fieldName: string,
+    query: string,
+    context: BundleContext
+  ): Promise<BundleLookupResult> {
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    const normalizedQuery = query.toLowerCase().trim();
+    let bundles: AttributeBundle[] = [];
+
+    if (entityType === "sku" && fieldName === "itemType") {
+      bundles = SKU_ITEM_TYPE_BUNDLES.filter(b =>
+        b.name.toLowerCase().startsWith(normalizedQuery)
+      );
+    } else if (entityType === "batch" && fieldName === "source") {
+      bundles = BATCH_SOURCE_BUNDLES.filter(b =>
+        b.name.toLowerCase().startsWith(normalizedQuery)
+      );
+    }
+
+    // Compute intersection fields
+    const intersectionFields = this.computeIntersections(context, bundles);
+
+    return {
+      kind: "bundle-lookup-result",
+      bundles,
+      intersectionFields,
+    };
+  }
+
+  /**
+   * Get bundle by exact field value match.
+   * Used for trigger fields with matchType="exact" (e.g., package dropdown).
+   *
+   * @param entityType - "sku" or "batch"
+   * @param fieldName - which field triggered this (e.g., "package")
+   * @param value - the exact value selected
+   * @param context - current bundle context for computing intersections
+   */
+  async getBundleByValue(
+    entityType: "sku" | "batch",
+    fieldName: string,
+    value: string,
+    context: BundleContext
+  ): Promise<BundleLookupResult> {
+    await new Promise(resolve => setTimeout(resolve, 30));
+
+    let bundles: AttributeBundle[] = [];
+
+    if (entityType === "sku" && fieldName === "package") {
+      const bundleId = PACKAGE_VALUE_TO_BUNDLE[value];
+      if (bundleId) {
+        const bundle = SKU_PACKAGE_BUNDLES.find(b => b.id === bundleId);
+        if (bundle) {
+          bundles = [bundle];
+        }
+      }
+    }
+
+    // Compute intersection fields
+    const intersectionFields = this.computeIntersections(context, bundles);
+
+    return {
+      kind: "bundle-lookup-result",
+      bundles,
+      intersectionFields,
+    };
+  }
+
+  /**
+   * Compute intersection fields for a set of active bundles + new bundles
+   */
+  private computeIntersections(
+    context: BundleContext,
+    newBundles: AttributeBundle[]
+  ): SchemaField[] {
+    const allBundleIds = [
+      ...context.activeBundleIds,
+      ...newBundles.map(b => b.id),
+    ];
+
+    const intersectionFields: SchemaField[] = [];
+
+    // Check all pairs for intersections
+    for (let i = 0; i < allBundleIds.length; i++) {
+      for (let j = i + 1; j < allBundleIds.length; j++) {
+        // Sort alphabetically to create consistent key
+        const pair = [allBundleIds[i], allBundleIds[j]].sort();
+        const key = pair.join(":");
+
+        if (BUNDLE_INTERSECTIONS[key]) {
+          intersectionFields.push(...BUNDLE_INTERSECTIONS[key]);
+        }
+      }
+    }
+
+    return intersectionFields;
+  }
+
+  /**
+   * Get a bundle by ID (for selecting from typeahead)
+   */
+  async getBundle(
+    entityType: "sku" | "batch",
+    fieldName: string,
+    bundleId: string
+  ): Promise<AttributeBundle | null> {
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    if (entityType === "sku" && fieldName === "itemType") {
+      return SKU_ITEM_TYPE_BUNDLES.find(b => b.id === bundleId) ?? null;
+    } else if (entityType === "sku" && fieldName === "package") {
+      return SKU_PACKAGE_BUNDLES.find(b => b.id === bundleId) ?? null;
+    } else if (entityType === "batch" && fieldName === "source") {
+      return BATCH_SOURCE_BUNDLES.find(b => b.id === bundleId) ?? null;
+    }
+
+    return null;
   }
 
   // ===========================================================================

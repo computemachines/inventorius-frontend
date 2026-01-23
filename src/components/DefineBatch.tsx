@@ -5,10 +5,17 @@ import { useLocation } from "react-router-dom";
 import { parse } from "query-string";
 
 import { ApiContext, FrontloadContext } from "../api-client/api-client";
-import { CodeUsageRef } from "../api-client/data-models";
+import { CodeUsageRef, AttributeBundle } from "../api-client/data-models";
 import { ToastContext } from "./Toast";
 import ItemLabel from "./ItemLabel";
 import PrintButton from "./PrintButton";
+import {
+  TriggerField,
+  DynamicFieldSection,
+  labelClasses,
+  inputClasses,
+} from "./DynamicFieldSection";
+import { useDynamicFields, TriggerState } from "../hooks/useDynamicFields";
 
 /**
  * Code entry with lookup status
@@ -22,12 +29,16 @@ interface CodeEntry {
 }
 
 /**
- * Define Batch page - mirrors the Define SKU form pattern.
+ * Define Batch page - uses unified trigger field model.
  *
- * Design system colors (from NewSkuFormDynamic.css):
+ * UX CHANGE: Added "Source" trigger field that works like "Item Type" in SKU form.
+ * When you select a source (DigiKey, Amazon, etc.), source-specific fields appear.
+ *
+ * Design system colors:
  * - #04151f deep black (headers)
+ * - #082441 dark navy (dropdowns)
+ * - #0c3764 medium blue (hover/focus)
  * - #c0771f amber (accents)
- * - #ecebe4 light cream (card background)
  * - #cdd2d6 light gray (borders)
  * - #26532b dark green (primary actions)
  */
@@ -46,7 +57,18 @@ export function DefineBatch() {
   const api = useContext(ApiContext);
   const { setToastContent } = useContext(ToastContext);
 
-  // Form state
+  // Dynamic fields hook (for Source trigger)
+  const dynamicFields = useDynamicFields("batch");
+
+  // Initialize the Source trigger field on mount
+  useEffect(() => {
+    const triggerDefs = api.getTriggerFields("batch");
+    for (const def of triggerDefs) {
+      dynamicFields.initTrigger(def);
+    }
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fixed form state
   const [batchId, setBatchId] = useState("");
   const [parentSkuId, setParentSkuId] = useState(queryParentSkuId);
   const [parentSkuName, setParentSkuName] = useState("");
@@ -62,7 +84,7 @@ export function DefineBatch() {
   // Set parent SKU name from query param data
   useEffect(() => {
     if (data?.parentSku?.kind === "sku") {
-      setParentSkuName(data.parentSku.state.name);
+      setParentSkuName(data.parentSku.state.name || "");
     }
   }, [data?.parentSku]);
 
@@ -71,7 +93,7 @@ export function DefineBatch() {
     if (parentSkuId && parentSkuId !== queryParentSkuId) {
       api.getSku(parentSkuId).then((result) => {
         if (result.kind === "sku") {
-          setParentSkuName(result.state.name);
+          setParentSkuName(result.state.name || "");
         } else {
           setParentSkuName("");
         }
@@ -87,9 +109,7 @@ export function DefineBatch() {
     ? "Error"
     : data?.nextBatch.state || "BAT000001";
 
-  /**
-   * Look up code usage
-   */
+  // Code handlers
   const lookupCode = useCallback(async (codeId: string, value: string) => {
     if (!value.trim()) {
       setCodes(prev => prev.map(c =>
@@ -109,9 +129,6 @@ export function DefineBatch() {
     ));
   }, [api]);
 
-  /**
-   * Handle code input change with debounced lookup
-   */
   const handleCodeChange = (codeId: string, newValue: string) => {
     setCodes(prev => prev.map(c =>
       c.id === codeId ? { ...c, value: newValue } : c
@@ -127,18 +144,12 @@ export function DefineBatch() {
     debounceRefs.current.set(codeId, timeout);
   };
 
-  /**
-   * Toggle code ownership
-   */
   const toggleCodeOwnership = (codeId: string) => {
     setCodes(prev => prev.map(c =>
       c.id === codeId ? { ...c, isOwned: !c.isOwned } : c
     ));
   };
 
-  /**
-   * Add a new code row
-   */
   const addCodeRow = () => {
     setCodes(prev => [
       ...prev,
@@ -150,9 +161,6 @@ export function DefineBatch() {
     }, 0);
   };
 
-  /**
-   * Handle Tab in last code input - add new row
-   */
   const handleCodeKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (e.key === "Tab" && !e.shiftKey && index === codes.length - 1) {
       const lastCode = codes[index];
@@ -163,13 +171,16 @@ export function DefineBatch() {
     }
   };
 
-  /**
-   * Reset form
-   */
   const handleReset = () => {
     setBatchId("");
     setBatchName("");
     setCodes([{ id: crypto.randomUUID(), value: "", isOwned: true, usedBy: [], isLoading: false }]);
+    dynamicFields.reset();
+    // Re-initialize triggers after reset
+    const triggerDefs = api.getTriggerFields("batch");
+    for (const def of triggerDefs) {
+      dynamicFields.initTrigger(def);
+    }
     if (!queryParentSkuId) {
       setParentSkuId("");
       setParentSkuName("");
@@ -177,9 +188,6 @@ export function DefineBatch() {
     batchIdRef.current?.focus();
   };
 
-  /**
-   * Submit batch creation
-   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -195,12 +203,22 @@ export function DefineBatch() {
       }
     }
 
+    // Get dynamic field values as props
+    const props = dynamicFields.getFieldValues();
+
+    // Add source to props if selected
+    const sourceState = dynamicFields.triggers.source;
+    if (sourceState?.selectedBundle) {
+      props.source = sourceState.selectedBundle.name;
+    }
+
     const resp = await api.createBatch({
       id: batchId || batchIdPlaceholder,
-      sku_id: parentSkuId || null,
+      sku_id: parentSkuId || undefined,
       name: batchName || undefined,
       owned_codes: ownedCodes,
       associated_codes: associatedCodes,
+      props: Object.keys(props).length > 0 ? props : undefined,
     });
 
     if (resp.kind === "status") {
@@ -228,9 +246,8 @@ export function DefineBatch() {
   if (frontloadMeta.pending) return <div className="p-4">Loading...</div>;
   if (frontloadMeta.error) throw Error("API Error");
 
-  // Tailwind classes matching the design system
-  const labelClasses = "block text-[0.85rem] font-semibold text-[#04151f] uppercase tracking-wide mt-5 mb-1.5";
-  const inputClasses = "block w-full py-2.5 px-3 border border-[#cdd2d6] rounded-md bg-white text-[#04151f] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] focus:outline-none focus:border-[#0c3764] focus:ring-[3px] focus:ring-[#0c3764]/15 placeholder:text-gray-400";
+  // Get source trigger state
+  const sourceTrigger = dynamicFields.triggers.source;
 
   return (
     <div className="max-w-[40rem] mx-auto">
@@ -240,7 +257,7 @@ export function DefineBatch() {
       </h2>
 
       <form onSubmit={handleSubmit}>
-        {/* Batch Label */}
+        {/* Batch ID */}
         <label htmlFor="batch_id" className={labelClasses} style={{ marginTop: 0 }}>
           Batch ID
         </label>
@@ -285,6 +302,36 @@ export function DefineBatch() {
           value={batchName}
           onChange={(e) => setBatchName(e.target.value)}
         />
+
+        {/* Source Section - NEW: Uses unified trigger field model */}
+        {sourceTrigger && (
+          <div className="mt-7 pt-5 border-t-2 border-[#cdd2d6]">
+            <h3 className="text-base font-bold text-[#04151f] mb-3 flex items-center gap-2">
+              <span className="block w-1 h-5 bg-[#0c3764] rounded-sm"></span>
+              Provenance
+            </h3>
+
+            {/* Source trigger field (typeahead) */}
+            <TriggerField
+              triggerState={sourceTrigger}
+              onInputChange={(value) => dynamicFields.handleTriggerInput("source", value)}
+              onSelect={(bundle) => dynamicFields.selectBundle("source", bundle)}
+              onClear={() => dynamicFields.clearTrigger("source")}
+              onBlur={() => dynamicFields.hideSuggestions("source")}
+            />
+
+            {/* Dynamic fields from selected source bundle */}
+            {dynamicFields.fieldStates.length > 0 && (
+              <div className="mt-2">
+                <DynamicFieldSection
+                  fieldStates={dynamicFields.fieldStates}
+                  onChange={dynamicFields.handleFieldChange}
+                  showSourceGroups={false}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Codes Section */}
         <div className="mt-7 pt-5 border-t-2 border-[#cdd2d6]">
