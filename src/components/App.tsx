@@ -21,12 +21,11 @@ import Bin from "./Bin";
 import { FourOhFour } from "./FourOhFour";
 import SearchForm from "./SearchForm";
 import Sku from "./Sku";
-import NewSku from "./NewSku";
 import NewSkuFormDynamic from "./NewSkuFormDynamic";
 import EULA from "./EULA";
-import NewBatch from "./NewBatch";
+import DefineBatch from "./DefineBatch";
 import Batch from "./Batch";
-import Receive from "./Receive";
+// Receive component removed - will be redesigned
 import MoveItem from "./MoveItem";
 import Release from "./Release";
 import Audit from "./Audit";
@@ -67,15 +66,14 @@ function App() {
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/new/bin" element={<NewBin />} />
-                <Route path="/new/sku" element={<NewSku />} />
-                <Route path="/new/sku/dynamic" element={<NewSkuFormDynamic />} />
-                <Route path="/new/batch" element={<NewBatch />} />
+                <Route path="/new/sku" element={<NewSkuFormDynamic />} />
+                <Route path="/new/batch" element={<DefineBatch />} />
                 <Route path="/bin/:id" element={<Bin />} />
                 <Route path="/sku/:id/edit" element={<Sku editable />} />
                 <Route path="/sku/:id" element={<Sku />} />
                 <Route path="/batch/:id/edit" element={<Batch editable />} />
                 <Route path="/batch/:id" element={<Batch />} />
-                <Route path="/receive" element={<Receive />} />
+                {/* /receive route removed - will be redesigned */}
                 <Route path="/release" element={<Release />} />
                 <Route path="/audit" element={<Audit />} />
                 <Route path="/move" element={<MoveItem />} />

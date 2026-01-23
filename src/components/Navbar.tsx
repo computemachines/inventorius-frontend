@@ -35,13 +35,10 @@ function Navbar({
           New Bin
         </NavLink>
         <NavLink className="navlink" to="/new/sku">
-          New SKU
-        </NavLink>
-        <NavLink className="navlink" to="/new/sku/dynamic">
-          New SKU (Dynamic)
+          Define SKU
         </NavLink>
         <NavLink className="navlink" to="/new/batch">
-          New Batch
+          Define Batch
         </NavLink>
       </NavlinkDropdown>
       <NavLink className="navlink" to="/move">
@@ -50,9 +47,7 @@ function Navbar({
       <NavLink className="navlink" to="/audit">
         Audit
       </NavLink>
-      <NavLink className="navlink" to="/receive">
-        Receive
-      </NavLink>
+{/* Receive link removed - will be redesigned */}
       <NavLink className="navlink" to="/release">
         Release
       </NavLink>
