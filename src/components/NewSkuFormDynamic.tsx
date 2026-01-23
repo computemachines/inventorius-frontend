@@ -5,6 +5,7 @@ import { useFrontload } from "react-frontload";
 import { ApiContext, FrontloadContext } from "../api-client/api-client";
 import { Category, SchemaField, Mixin, CodeUsageRef } from "../api-client/data-models";
 import { ToastContext } from "./Toast";
+import { labelClasses, inputClasses } from "./DynamicFieldSection";
 
 interface CodeEntry {
   id: string;
@@ -22,6 +23,10 @@ interface FieldState {
 
 /**
  * Dynamic SKU creation form with adaptive fields.
+ * Uses the unified "trigger field" model:
+ * - Item Type: trigger field that activates item-type bundles (formerly "categories")
+ * - Package: secondary trigger within item-type that activates package bundles (e.g., SMD)
+ * - Intersection fields appear when multiple bundles are active
  *
  * Design system colors:
  * - #04151f deep black (headers)
@@ -76,11 +81,7 @@ export function NewSkuFormDynamic() {
     ? "Error"
     : data?.nextSku.state || "SKU000001";
 
-  // Tailwind class definitions
-  const labelClasses = "block text-[0.85rem] font-semibold text-[#04151f] uppercase tracking-wide mt-5 mb-1.5";
-  const inputClasses = "block w-full py-2.5 px-3 border border-[#cdd2d6] rounded-md bg-white text-[#04151f] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] focus:outline-none focus:border-[#0c3764] focus:ring-[3px] focus:ring-[#0c3764]/15 placeholder:text-gray-400";
-
-  // Search categories on item name change
+  // Search categories (item types) on input change
   const searchCategories = useCallback(
     async (query: string) => {
       if (!query.trim() || query.length < 2) {
@@ -538,9 +539,9 @@ export function NewSkuFormDynamic() {
         className={inputClasses}
       />
 
-      {/* Item (combined name + category) */}
+      {/* Item Type (trigger field for item-type bundles) */}
       <label htmlFor="item-name" className={labelClasses}>
-        Item
+        Item Type
       </label>
       <div className="relative" ref={containerRef}>
         <input
