@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useContext, useState, useRef, useEffect, useCallback } from "react";
 import { useFrontload } from "react-frontload";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { parse } from "query-string";
 
 import { ApiContext, FrontloadContext } from "../api-client/api-client";
@@ -11,35 +11,28 @@ import ItemLabel from "./ItemLabel";
 import PrintButton from "./PrintButton";
 
 /**
- * Code entry during scanning phase
+ * Code entry with lookup status
  */
-interface ScannedCode {
+interface CodeEntry {
   id: string;
   value: string;
-  matches: CodeUsageRef[];
+  isOwned: boolean;
+  usedBy: CodeUsageRef[];
   isLoading: boolean;
 }
 
 /**
- * Match result after analyzing all scanned codes
- */
-type MatchResult =
-  | { status: "scanning" }
-  | { status: "identified"; sku: CodeUsageRef; unknownCodes: string[] }
-  | { status: "multiple"; candidates: CodeUsageRef[] }
-  | { status: "none"; codes: string[] };
-
-/**
- * Dynamic batch definition page.
+ * Define Batch page - mirrors the Define SKU form pattern.
  *
- * Workflow:
- * 1. Scan codes from package
- * 2. System matches codes to SKUs
- * 3. Create batch under identified/selected SKU
+ * Design system colors (from NewSkuFormDynamic.css):
+ * - #04151f deep black (headers)
+ * - #c0771f amber (accents)
+ * - #ecebe4 light cream (card background)
+ * - #cdd2d6 light gray (borders)
+ * - #26532b dark green (primary actions)
  */
 export function DefineBatch() {
   const location = useLocation();
-  const navigate = useNavigate();
   const queryParentSkuId = (parse(location.search).parent as string) || "";
 
   const { data, frontloadMeta, setData } = useFrontload(
@@ -53,43 +46,40 @@ export function DefineBatch() {
   const api = useContext(ApiContext);
   const { setToastContent } = useContext(ToastContext);
 
-  // Scanning phase state
-  const [scannedCodes, setScannedCodes] = useState<ScannedCode[]>([
-    { id: crypto.randomUUID(), value: "", matches: [], isLoading: false }
-  ]);
-  const [matchResult, setMatchResult] = useState<MatchResult>({ status: "scanning" });
-
-  // Batch definition state
-  const [selectedSku, setSelectedSku] = useState<CodeUsageRef | null>(null);
+  // Form state
   const [batchId, setBatchId] = useState("");
+  const [parentSkuId, setParentSkuId] = useState(queryParentSkuId);
+  const [parentSkuName, setParentSkuName] = useState("");
   const [batchName, setBatchName] = useState("");
-  const [uniquelyIdentifies, setUniquelyIdentifies] = useState(true);
+  const [codes, setCodes] = useState<CodeEntry[]>([
+    { id: crypto.randomUUID(), value: "", isOwned: true, usedBy: [], isLoading: false }
+  ]);
 
   // Refs
-  const codeInputRef = useRef<HTMLInputElement>(null);
+  const batchIdRef = useRef<HTMLInputElement>(null);
   const debounceRefs = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  // Set parent SKU from query param
+  // Set parent SKU name from query param data
   useEffect(() => {
     if (data?.parentSku?.kind === "sku") {
-      setSelectedSku({
-        type: "sku",
-        id: data.parentSku.state.id,
-        name: data.parentSku.state.name,
-        relationship: "owned",
-      });
-      setMatchResult({
-        status: "identified",
-        sku: {
-          type: "sku",
-          id: data.parentSku.state.id,
-          name: data.parentSku.state.name,
-          relationship: "owned",
-        },
-        unknownCodes: [],
-      });
+      setParentSkuName(data.parentSku.state.name);
     }
   }, [data?.parentSku]);
+
+  // Look up parent SKU when ID changes
+  useEffect(() => {
+    if (parentSkuId && parentSkuId !== queryParentSkuId) {
+      api.getSku(parentSkuId).then((result) => {
+        if (result.kind === "sku") {
+          setParentSkuName(result.state.name);
+        } else {
+          setParentSkuName("");
+        }
+      });
+    } else if (!parentSkuId) {
+      setParentSkuName("");
+    }
+  }, [parentSkuId, queryParentSkuId, api]);
 
   const batchIdPlaceholder = frontloadMeta.pending
     ? "Loading..."
@@ -98,24 +88,24 @@ export function DefineBatch() {
     : data?.nextBatch.state || "BAT000001";
 
   /**
-   * Look up code usage and update matches
+   * Look up code usage
    */
   const lookupCode = useCallback(async (codeId: string, value: string) => {
     if (!value.trim()) {
-      setScannedCodes(prev => prev.map(c =>
-        c.id === codeId ? { ...c, matches: [], isLoading: false } : c
+      setCodes(prev => prev.map(c =>
+        c.id === codeId ? { ...c, usedBy: [], isLoading: false } : c
       ));
       return;
     }
 
-    setScannedCodes(prev => prev.map(c =>
+    setCodes(prev => prev.map(c =>
       c.id === codeId ? { ...c, isLoading: true } : c
     ));
 
     const result = await api.getCodeUsage(value.trim());
 
-    setScannedCodes(prev => prev.map(c =>
-      c.id === codeId ? { ...c, matches: result.usedBy, isLoading: false } : c
+    setCodes(prev => prev.map(c =>
+      c.id === codeId ? { ...c, usedBy: result.usedBy, isLoading: false } : c
     ));
   }, [api]);
 
@@ -123,7 +113,7 @@ export function DefineBatch() {
    * Handle code input change with debounced lookup
    */
   const handleCodeChange = (codeId: string, newValue: string) => {
-    setScannedCodes(prev => prev.map(c =>
+    setCodes(prev => prev.map(c =>
       c.id === codeId ? { ...c, value: newValue } : c
     ));
 
@@ -138,89 +128,76 @@ export function DefineBatch() {
   };
 
   /**
+   * Toggle code ownership
+   */
+  const toggleCodeOwnership = (codeId: string) => {
+    setCodes(prev => prev.map(c =>
+      c.id === codeId ? { ...c, isOwned: !c.isOwned } : c
+    ));
+  };
+
+  /**
+   * Add a new code row
+   */
+  const addCodeRow = () => {
+    setCodes(prev => [
+      ...prev,
+      { id: crypto.randomUUID(), value: "", isOwned: true, usedBy: [], isLoading: false }
+    ]);
+    setTimeout(() => {
+      const inputs = document.querySelectorAll<HTMLInputElement>('input[data-code-input]');
+      inputs[inputs.length - 1]?.focus();
+    }, 0);
+  };
+
+  /**
    * Handle Tab in last code input - add new row
    */
   const handleCodeKeyDown = (e: React.KeyboardEvent, index: number) => {
-    if (e.key === "Tab" && !e.shiftKey && index === scannedCodes.length - 1) {
-      const lastCode = scannedCodes[index];
+    if (e.key === "Tab" && !e.shiftKey && index === codes.length - 1) {
+      const lastCode = codes[index];
       if (lastCode.value.trim()) {
         e.preventDefault();
-        setScannedCodes(prev => [
-          ...prev,
-          { id: crypto.randomUUID(), value: "", matches: [], isLoading: false }
-        ]);
-        setTimeout(() => {
-          const inputs = document.querySelectorAll<HTMLInputElement>('input[data-code-input]');
-          inputs[inputs.length - 1]?.focus();
-        }, 0);
+        addCodeRow();
       }
     }
   };
 
   /**
-   * Analyze all scanned codes and compute match result
+   * Reset form
    */
-  const analyzeMatches = useCallback(() => {
-    const nonEmptyCodes = scannedCodes.filter(c => c.value.trim());
-    if (nonEmptyCodes.length === 0) {
-      setMatchResult({ status: "scanning" });
-      return;
+  const handleReset = () => {
+    setBatchId("");
+    setBatchName("");
+    setCodes([{ id: crypto.randomUUID(), value: "", isOwned: true, usedBy: [], isLoading: false }]);
+    if (!queryParentSkuId) {
+      setParentSkuId("");
+      setParentSkuName("");
     }
-
-    const skuMatches = new Map<string, CodeUsageRef>();
-    const unknownCodes: string[] = [];
-
-    for (const code of nonEmptyCodes) {
-      if (code.matches.length === 0) {
-        unknownCodes.push(code.value);
-      } else {
-        for (const match of code.matches) {
-          if (match.type === "sku") {
-            skuMatches.set(match.id, match);
-          }
-        }
-      }
-    }
-
-    if (skuMatches.size === 0) {
-      setMatchResult({ status: "none", codes: nonEmptyCodes.map(c => c.value) });
-    } else if (skuMatches.size === 1) {
-      const sku = Array.from(skuMatches.values())[0];
-      setMatchResult({ status: "identified", sku, unknownCodes });
-      setSelectedSku(sku);
-    } else {
-      setMatchResult({ status: "multiple", candidates: Array.from(skuMatches.values()) });
-    }
-  }, [scannedCodes]);
-
-  useEffect(() => {
-    const anyLoading = scannedCodes.some(c => c.isLoading);
-    if (!anyLoading) {
-      analyzeMatches();
-    }
-  }, [scannedCodes, analyzeMatches]);
-
-  const handleSelectSku = (sku: CodeUsageRef) => {
-    setSelectedSku(sku);
-    const unknownCodes = scannedCodes
-      .filter(c => c.value.trim() && c.matches.length === 0)
-      .map(c => c.value);
-    setMatchResult({ status: "identified", sku, unknownCodes });
+    batchIdRef.current?.focus();
   };
 
+  /**
+   * Submit batch creation
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const unknownCodes = scannedCodes
-      .filter(c => c.value.trim() && c.matches.length === 0)
-      .map(c => c.value);
+    const ownedCodes: string[] = [];
+    const associatedCodes: string[] = [];
 
-    const ownedCodes = uniquelyIdentifies ? unknownCodes : [];
-    const associatedCodes = uniquelyIdentifies ? [] : unknownCodes;
+    for (const code of codes) {
+      if (!code.value.trim()) continue;
+      if (code.isOwned) {
+        ownedCodes.push(code.value.trim());
+      } else {
+        associatedCodes.push(code.value.trim());
+      }
+    }
 
     const resp = await api.createBatch({
       id: batchId || batchIdPlaceholder,
-      sku_id: selectedSku?.id || null,
+      sku_id: parentSkuId || null,
       name: batchName || undefined,
       owned_codes: ownedCodes,
       associated_codes: associatedCodes,
@@ -237,14 +214,9 @@ export function DefineBatch() {
         ),
         mode: "success",
       });
-      setScannedCodes([{ id: crypto.randomUUID(), value: "", matches: [], isLoading: false }]);
-      setMatchResult({ status: "scanning" });
-      setSelectedSku(null);
-      setBatchId("");
-      setBatchName("");
+      handleReset();
       const nextBatch = await api.getNextBatch();
       setData(prev => ({ ...prev, nextBatch }));
-      codeInputRef.current?.focus();
     } else {
       setToastContent({
         content: <p>{resp.title}</p>,
@@ -256,176 +228,149 @@ export function DefineBatch() {
   if (frontloadMeta.pending) return <div className="p-4">Loading...</div>;
   if (frontloadMeta.error) throw Error("API Error");
 
-  const unknownCodes = scannedCodes
-    .filter(c => c.value.trim() && c.matches.length === 0)
-    .map(c => c.value);
+  // Tailwind classes matching the design system
+  const labelClasses = "block text-[0.85rem] font-semibold text-[#04151f] uppercase tracking-wide mt-5 mb-1.5";
+  const inputClasses = "block w-full py-2.5 px-3 border border-[#cdd2d6] rounded-md bg-white text-[#04151f] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] focus:outline-none focus:border-[#0c3764] focus:ring-[3px] focus:ring-[#0c3764]/15 placeholder:text-gray-400";
 
   return (
-    <div className="max-w-xl mx-auto p-4">
-      <h2 className="text-xl font-semibold mb-4">Define Batch</h2>
+    <div className="max-w-[40rem] mx-auto">
+      {/* Title */}
+      <h2 className="text-2xl font-bold text-[#04151f] mb-6 pb-3 border-b-2 border-[#cdd2d6]">
+        New Batch
+      </h2>
 
-      {/* Phase 1: Code Scanning */}
-      <section className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-        <h3 className="font-medium mb-1">Scan Codes</h3>
-        <p className="text-sm text-gray-600 mb-4">
-          Scan codes from the package to identify the SKU
-        </p>
-
-        <div className="flex flex-col gap-2">
-          {scannedCodes.map((code, index) => (
-            <div key={code.id} className="flex items-center gap-2">
-              <input
-                ref={index === 0 ? codeInputRef : undefined}
-                data-code-input
-                type="text"
-                className="flex-1 px-3 py-2 font-mono text-base border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Scan or type code..."
-                value={code.value}
-                onChange={(e) => handleCodeChange(code.id, e.target.value)}
-                onKeyDown={(e) => handleCodeKeyDown(e, index)}
-              />
-              {code.isLoading && <span className="text-sm">⏳</span>}
-              {!code.isLoading && code.value && (
-                <span className={`text-xs px-2 py-1 rounded whitespace-nowrap ${
-                  code.matches.length > 0
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-yellow-100 text-yellow-800'
-                }`}>
-                  {code.matches.length > 0 ? `✓ ${code.matches.length} match` : '? new'}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Phase 2: Match Results */}
-      <section className="mb-6">
-        {matchResult.status === "scanning" && (
-          <div className="p-4 bg-gray-100 rounded-lg text-gray-600 text-center">
-            Scan codes to identify SKU...
-          </div>
-        )}
-
-        {matchResult.status === "identified" && (
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="font-medium text-green-800 mb-2">✓ Identified</div>
-            <div className="flex items-center gap-3 p-2 bg-white rounded mb-2">
-              <ItemLabel label={matchResult.sku.id} />
-              <span className="text-gray-600">{matchResult.sku.name}</span>
-            </div>
-            {matchResult.unknownCodes.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-green-200">
-                <span className="text-sm text-gray-600">New codes:</span>
-                {matchResult.unknownCodes.map(c => (
-                  <code key={c} className="text-sm px-2 py-1 bg-white rounded font-mono">{c}</code>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {matchResult.status === "multiple" && (
-          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="font-medium text-yellow-800 mb-2">Multiple matches - select one:</div>
-            <div className="flex flex-col gap-2">
-              {matchResult.candidates.map(candidate => (
-                <button
-                  key={candidate.id}
-                  type="button"
-                  className={`flex items-center gap-3 p-3 bg-white rounded-lg border-2 text-left transition-colors ${
-                    selectedSku?.id === candidate.id
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-transparent hover:border-blue-300'
-                  }`}
-                  onClick={() => handleSelectSku(candidate)}
-                >
-                  <span className="font-mono font-semibold text-blue-600">{candidate.id}</span>
-                  <span className="text-gray-600">{candidate.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {matchResult.status === "none" && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-            <div className="font-medium text-red-800 mb-2">No matches</div>
-            <p className="text-sm text-gray-700 mb-3">Scanned codes don't match any existing SKU.</p>
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-                onClick={() => navigate("/new/sku")}
-              >
-                Create New SKU
-              </button>
-              <span className="text-sm text-gray-500">or continue without SKU</span>
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* Phase 3: Batch Definition */}
-      {(matchResult.status === "identified" || matchResult.status === "none") && (
-        <form onSubmit={handleSubmit} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <h3 className="font-medium mb-4">Batch Details</h3>
-
-          <label htmlFor="batch_id" className="block text-sm font-medium text-gray-700 mb-1">
-            Batch Label
-          </label>
-          <div className="flex items-center gap-2 mb-4">
-            <input
-              type="text"
-              id="batch_id"
-              className="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder={batchIdPlaceholder}
-              value={batchId}
-              onChange={(e) => setBatchId(e.target.value)}
-            />
-            <PrintButton value={batchId || batchIdPlaceholder} />
-          </div>
-
-          <label htmlFor="batch_name" className="block text-sm font-medium text-gray-700 mb-1">
-            Name (optional)
-          </label>
+      <form onSubmit={handleSubmit}>
+        {/* Batch Label */}
+        <label htmlFor="batch_id" className={labelClasses} style={{ marginTop: 0 }}>
+          Batch ID
+        </label>
+        <div className="flex items-center gap-2">
           <input
+            ref={batchIdRef}
             type="text"
-            id="batch_name"
-            className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-            placeholder={selectedSku?.name || ""}
-            value={batchName}
-            onChange={(e) => setBatchName(e.target.value)}
+            id="batch_id"
+            className={inputClasses + " flex-1"}
+            placeholder={batchIdPlaceholder}
+            value={batchId}
+            onChange={(e) => setBatchId(e.target.value)}
           />
+          <PrintButton value={batchId || batchIdPlaceholder} />
+        </div>
 
-          {unknownCodes.length > 0 && (
-            <div className="p-3 bg-white rounded border border-gray-200 mb-4">
-              <div className="text-sm font-medium text-gray-700 mb-2">Codes to add to batch</div>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {unknownCodes.map(code => (
-                  <code key={code} className="text-sm px-2 py-1 bg-gray-100 rounded font-mono">{code}</code>
-                ))}
+        {/* Parent SKU */}
+        <label htmlFor="parent_sku" className={labelClasses}>
+          Parent SKU
+        </label>
+        <input
+          type="text"
+          id="parent_sku"
+          className={inputClasses}
+          placeholder="SKU ID (optional)"
+          value={parentSkuId}
+          onChange={(e) => setParentSkuId(e.target.value)}
+        />
+        {parentSkuName && (
+          <p className="mt-1 text-sm text-[#6d635d]">{parentSkuName}</p>
+        )}
+
+        {/* Batch Name */}
+        <label htmlFor="batch_name" className={labelClasses}>
+          Name
+        </label>
+        <input
+          type="text"
+          id="batch_name"
+          className={inputClasses}
+          placeholder={parentSkuName || "Optional"}
+          value={batchName}
+          onChange={(e) => setBatchName(e.target.value)}
+        />
+
+        {/* Codes Section */}
+        <div className="mt-7 pt-5 border-t-2 border-[#cdd2d6]">
+          <h3 className="text-base font-bold text-[#04151f] mb-3 flex items-center gap-2">
+            <span className="block w-1 h-5 bg-[#c0771f] rounded-sm"></span>
+            Codes
+          </h3>
+
+          <div className="flex flex-col gap-2">
+            {codes.map((code, index) => (
+              <div key={code.id} className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 relative flex items-stretch">
+                    <input
+                      data-code-input
+                      type="text"
+                      className={`${inputClasses} flex-1 ${code.value ? 'pr-20' : ''} !mt-0`}
+                      placeholder="Scan or type code..."
+                      value={code.value}
+                      onChange={(e) => handleCodeChange(code.id, e.target.value)}
+                      onKeyDown={(e) => handleCodeKeyDown(e, index)}
+                    />
+                    {code.value && (
+                      <button
+                        type="button"
+                        onClick={() => toggleCodeOwnership(code.id)}
+                        className={`absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
+                          code.isOwned
+                            ? 'bg-[#26532b] text-white hover:bg-[#1e4423]'
+                            : 'bg-[#cdd2d6] text-[#6d635d] hover:bg-[#b8bfc5]'
+                        }`}
+                      >
+                        {code.isOwned ? 'Owned' : 'Assoc'}
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addCodeRow}
+                    className="py-2.5 px-3.5 text-base font-semibold border border-[#cdd2d6] rounded-md bg-transparent text-gray-400 hover:bg-[#e8f4e8] hover:border-[#26532b] hover:text-[#26532b] transition-colors"
+                  >
+                    +
+                  </button>
+                </div>
+                {/* Shared info */}
+                {!code.isLoading && code.value && code.usedBy.length > 0 && (
+                  <div className="flex items-center gap-2 text-xs flex-wrap pl-1">
+                    <span className="text-[#6d635d]">Shared with:</span>
+                    {code.usedBy.slice(0, 3).map((ref) => (
+                      <span
+                        key={ref.id}
+                        className="px-2 py-0.5 bg-[#082441] text-[#ecebe4] rounded text-xs"
+                      >
+                        {ref.name || ref.id}
+                      </span>
+                    ))}
+                    {code.usedBy.length > 3 && (
+                      <span className="text-gray-400 italic">+{code.usedBy.length - 3} more</span>
+                    )}
+                  </div>
+                )}
+                {code.isLoading && (
+                  <span className="text-sm text-gray-400 pl-1">Loading...</span>
+                )}
               </div>
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4"
-                  checked={uniquelyIdentifies}
-                  onChange={(e) => setUniquelyIdentifies(e.target.checked)}
-                />
-                <span>These codes uniquely identify this batch</span>
-              </label>
-            </div>
-          )}
+            ))}
+          </div>
+        </div>
 
+        {/* Actions */}
+        <div className="flex gap-3 mt-8 pt-6 border-t border-[#cdd2d6]">
           <button
             type="submit"
-            className="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+            className="flex-1 py-3 px-6 text-base font-semibold bg-[#26532b] text-white rounded-md hover:bg-[#1e4423] active:scale-[0.98] transition-all cursor-pointer"
           >
             Create Batch
           </button>
-        </form>
-      )}
+          <button
+            type="button"
+            onClick={handleReset}
+            className="py-3 px-5 text-base font-medium bg-transparent text-[#6d635d] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] hover:text-[#04151f] transition-colors cursor-pointer"
+          >
+            Reset
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

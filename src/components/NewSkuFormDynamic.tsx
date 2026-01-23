@@ -7,15 +7,12 @@ import { Category, SchemaField, Mixin, CodeUsageRef } from "../api-client/data-m
 import { ToastContext } from "./Toast";
 
 interface CodeEntry {
-  id: string;  // unique key for React
+  id: string;
   value: string;
   isOwned: boolean;
-  usedBy: CodeUsageRef[];  // other SKUs/batches sharing this code
+  usedBy: CodeUsageRef[];
   isLoading: boolean;
 }
-
-import "../styles/form.css";
-import "../styles/NewSkuFormDynamic.css";
 
 interface FieldState {
   field: SchemaField;
@@ -26,10 +23,13 @@ interface FieldState {
 /**
  * Dynamic SKU creation form with adaptive fields.
  *
- * Single "Item" field serves as both name and category selector:
- * - Type anything: "Antique toothbrush holder", "Battery", "10kΩ Resistor"
- * - If it matches a category, offer to use that item type
- * - The typed value becomes the item name
+ * Design system colors:
+ * - #04151f deep black (headers)
+ * - #082441 dark navy (dropdowns)
+ * - #0c3764 medium blue (hover/focus)
+ * - #c0771f amber (accents)
+ * - #cdd2d6 light gray (borders)
+ * - #26532b dark green (primary actions)
  */
 export function NewSkuFormDynamic() {
   const { data, frontloadMeta, setData } = useFrontload(
@@ -55,13 +55,13 @@ export function NewSkuFormDynamic() {
   // Dynamic fields state
   const [fieldStates, setFieldStates] = useState<FieldState[]>([]);
 
-  // Track current mixin trigger value (not a set - only one active at a time)
+  // Track current mixin trigger value
   const [currentMixinTrigger, setCurrentMixinTrigger] = useState<string | null>(null);
 
   // Active mixins
   const [activeMixins, setActiveMixins] = useState<Mixin[]>([]);
 
-  // Code labels state - start with one empty entry
+  // Code labels state
   const [codes, setCodes] = useState<CodeEntry[]>([
     { id: crypto.randomUUID(), value: "", isOwned: true, usedBy: [], isLoading: false }
   ]);
@@ -76,6 +76,10 @@ export function NewSkuFormDynamic() {
     ? "Error"
     : data?.nextSku.state || "SKU000001";
 
+  // Tailwind class definitions
+  const labelClasses = "block text-[0.85rem] font-semibold text-[#04151f] uppercase tracking-wide mt-5 mb-1.5";
+  const inputClasses = "block w-full py-2.5 px-3 border border-[#cdd2d6] rounded-md bg-white text-[#04151f] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] focus:outline-none focus:border-[#0c3764] focus:ring-[3px] focus:ring-[#0c3764]/15 placeholder:text-gray-400";
+
   // Search categories on item name change
   const searchCategories = useCallback(
     async (query: string) => {
@@ -83,7 +87,6 @@ export function NewSkuFormDynamic() {
         setSuggestions([]);
         return;
       }
-
       const result = await api.searchCategories(query);
       setSuggestions(result.categories);
       setSelectedSuggestionIndex(0);
@@ -91,7 +94,6 @@ export function NewSkuFormDynamic() {
     [api]
   );
 
-  // Handle item name change with debounced category search
   const handleItemNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setItemName(newValue);
@@ -106,7 +108,6 @@ export function NewSkuFormDynamic() {
     }, 200);
   };
 
-  // Select an existing category (item type)
   const selectCategory = useCallback((category: Category) => {
     setItemName(category.name);
     setSelectedCategory(category);
@@ -123,7 +124,6 @@ export function NewSkuFormDynamic() {
     setFieldStates(newFieldStates);
   }, []);
 
-  // Create new item type (no predefined schema)
   const createNewItemType = useCallback(() => {
     setSelectedCategory(null);
     setShowSuggestions(false);
@@ -133,12 +133,10 @@ export function NewSkuFormDynamic() {
     setActiveMixins([]);
   }, []);
 
-  // Check if typed text exactly matches a suggestion (case insensitive)
   const hasExactMatch = suggestions.some(
     (cat) => cat.name.toLowerCase() === itemName.toLowerCase().trim()
   );
 
-  // Handle field value change
   const handleFieldChange = useCallback(
     async (fieldName: string, newValue: string) => {
       setFieldStates((prev) =>
@@ -200,21 +198,15 @@ export function NewSkuFormDynamic() {
     [api, selectedCategory, currentMixinTrigger]
   );
 
-  // ==========================================================================
   // Code Labels Handlers
-  // ==========================================================================
-
-  // Auto-classify: odd char count = owned, even = associated (for testing)
   const autoClassifyCode = (code: string): boolean => {
-    return code.length % 2 === 1;  // odd = owned
+    return code.length % 2 === 1;
   };
 
-  // Handle code value change
   const handleCodeChange = useCallback(
     async (id: string, newValue: string) => {
       const trimmedValue = newValue.trim();
 
-      // Update the value immediately
       setCodes((prev) =>
         prev.map((c) =>
           c.id === id
@@ -228,7 +220,6 @@ export function NewSkuFormDynamic() {
         )
       );
 
-      // Look up code usage if there's a value
       if (trimmedValue) {
         const result = await api.getCodeUsage(trimmedValue);
         setCodes((prev) =>
@@ -249,18 +240,15 @@ export function NewSkuFormDynamic() {
     [api]
   );
 
-  // Toggle owned/associated for a code
   const toggleCodeOwnership = useCallback((id: string) => {
     setCodes((prev) =>
       prev.map((c) => (c.id === id ? { ...c, isOwned: !c.isOwned } : c))
     );
   }, []);
 
-  // Remove a code entry (used by × button)
   const removeCode = useCallback((id: string) => {
     setCodes((prev) => {
       const filtered = prev.filter((c) => c.id !== id);
-      // Always keep at least one row (the "add new" row)
       if (filtered.length === 0) {
         return [{ id: crypto.randomUUID(), value: "", isOwned: true, usedBy: [], isLoading: false }];
       }
@@ -268,13 +256,10 @@ export function NewSkuFormDynamic() {
     });
   }, []);
 
-  // Handle blur - remove empty non-last rows
   const handleCodeBlur = useCallback((id: string, index: number) => {
     setCodes((prev) => {
       const code = prev.find((c) => c.id === id);
       const isLastRow = index === prev.length - 1;
-
-      // If empty and not last row, remove it
       if (code && !code.value.trim() && !isLastRow) {
         return prev.filter((c) => c.id !== id);
       }
@@ -282,19 +267,16 @@ export function NewSkuFormDynamic() {
     });
   }, []);
 
-  // Handle focus - select all content
   const handleCodeFocus = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
     e.target.select();
   }, []);
 
-  // Handle Tab on last row with content - add new row
   const handleCodeKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>, id: string, index: number) => {
       if (e.key === "Tab" && !e.shiftKey) {
         const currentCode = codes.find((c) => c.id === id);
         const isLastRow = index === codes.length - 1;
 
-        // If this row has content and it's the last row, add a new row
         if (currentCode?.value.trim() && isLastRow) {
           e.preventDefault();
           const newId = crypto.randomUUID();
@@ -302,7 +284,6 @@ export function NewSkuFormDynamic() {
             ...prev,
             { id: newId, value: "", isOwned: true, usedBy: [], isLoading: false },
           ]);
-          // Focus the new input after render
           setTimeout(() => {
             const newInput = document.querySelector(
               `input[data-code-id="${newId}"]`
@@ -315,12 +296,10 @@ export function NewSkuFormDynamic() {
     [codes]
   );
 
-  // Handle + button click - add new row if current has content, otherwise focus
   const handlePlusClick = useCallback((id: string) => {
     const currentCode = codes.find((c) => c.id === id);
 
     if (currentCode?.value.trim()) {
-      // Has content - add new row and focus it (like Tab)
       const newId = crypto.randomUUID();
       setCodes((prev) => [
         ...prev,
@@ -333,7 +312,6 @@ export function NewSkuFormDynamic() {
         newInput?.focus();
       }, 0);
     } else {
-      // Empty - just focus the input
       const input = document.querySelector(
         `input[data-code-id="${id}"]`
       ) as HTMLInputElement;
@@ -341,12 +319,10 @@ export function NewSkuFormDynamic() {
     }
   }, [codes]);
 
-  // Total options = suggestions + "create new" option (if no exact match)
   const showCreateNew = itemName.trim().length >= 2 && !hasExactMatch;
   const totalOptions = suggestions.length + (showCreateNew ? 1 : 0);
   const createNewIndex = showCreateNew && suggestions.length === 0 ? 0 : suggestions.length;
 
-  // Handle keyboard in item field
   const handleItemKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!showSuggestions || totalOptions === 0) return;
 
@@ -375,7 +351,6 @@ export function NewSkuFormDynamic() {
     }
   };
 
-  // Close suggestions on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -386,14 +361,12 @@ export function NewSkuFormDynamic() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Cleanup debounce
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
 
-  // Reset form
   const resetForm = useCallback(async () => {
     setSkuId("");
     setItemName("");
@@ -415,7 +388,6 @@ export function NewSkuFormDynamic() {
     }
   }, [api, setData]);
 
-  // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -430,7 +402,6 @@ export function NewSkuFormDynamic() {
       props._category = selectedCategory.id;
     }
 
-    // Collect codes
     const ownedCodes = codes
       .filter((c) => c.value.trim() && c.isOwned)
       .map((c) => c.value.trim());
@@ -473,29 +444,28 @@ export function NewSkuFormDynamic() {
     await resetForm();
   };
 
-  // Render a dynamic field
   const renderField = (fs: FieldState, index: number) => {
     const { field, value } = fs;
     const inputId = `field-${field.name}`;
 
-    const fieldClasses = fs.source === "intersection"
-      ? "dynamic-field dynamic-field--intersection"
+    const fieldWrapperClasses = fs.source === "intersection"
+      ? "border-l-[3px] border-l-[#c0771f] pl-4 bg-gradient-to-r from-[#c0771f]/5 to-transparent rounded-r"
       : fs.source === "mixin"
-      ? "dynamic-field dynamic-field--mixin"
-      : "dynamic-field";
+      ? "border-l-[3px] border-l-[#26532b] pl-4 bg-gradient-to-r from-[#26532b]/5 to-transparent rounded-r"
+      : "";
 
     if (field.type === "enum") {
       return (
-        <div key={`${field.name}-${index}`} className={fieldClasses}>
-          <label htmlFor={inputId} className="form-label">
+        <div key={`${field.name}-${index}`} className={`py-2 ${fieldWrapperClasses}`}>
+          <label htmlFor={inputId} className={labelClasses} style={{ marginTop: 0 }}>
             {field.label}
-            {field.required && <span className="required-mark">*</span>}
+            {field.required && <span className="text-[#c0771f] ml-0.5 font-bold">*</span>}
           </label>
           <select
             id={inputId}
             value={value}
             onChange={(e) => handleFieldChange(field.name, e.target.value)}
-            className="form-single-code-input"
+            className={`${inputClasses} cursor-pointer appearance-none bg-[url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2304151f' d='M6 8L1 3h10z'/%3E%3C/svg%3E")] bg-no-repeat bg-[right_0.75em_center] pr-10`}
           >
             <option value="">Select {field.label.toLowerCase()}...</option>
             {field.options?.map((opt) => (
@@ -508,61 +478,71 @@ export function NewSkuFormDynamic() {
 
     if (field.type === "unit") {
       return (
-        <div key={`${field.name}-${index}`} className={fieldClasses}>
-          <label htmlFor={inputId} className="form-label">
+        <div key={`${field.name}-${index}`} className={`py-2 ${fieldWrapperClasses}`}>
+          <label htmlFor={inputId} className={labelClasses} style={{ marginTop: 0 }}>
             {field.label}
-            {field.required && <span className="required-mark">*</span>}
+            {field.required && <span className="text-[#c0771f] ml-0.5 font-bold">*</span>}
           </label>
-          <div className="unit-input-wrapper">
+          <div className="flex items-stretch">
             <input
               id={inputId}
               type="text"
               value={value}
               onChange={(e) => handleFieldChange(field.name, e.target.value)}
-              className="form-single-code-input"
-              placeholder={`e.g., 10k`}
+              className={`${inputClasses} flex-1 rounded-r-none border-r-0`}
+              placeholder="e.g., 10k"
             />
-            {field.unit && <span className="unit-suffix">{field.unit}</span>}
+            {field.unit && (
+              <span className="flex items-center px-3 bg-[#e5e4de] text-[#6d635d] text-sm font-medium border border-[#cdd2d6] border-l-0 rounded-r-md whitespace-nowrap">
+                {field.unit}
+              </span>
+            )}
           </div>
         </div>
       );
     }
 
     return (
-      <div key={`${field.name}-${index}`} className={fieldClasses}>
-        <label htmlFor={inputId} className="form-label">
+      <div key={`${field.name}-${index}`} className={`py-2 ${fieldWrapperClasses}`}>
+        <label htmlFor={inputId} className={labelClasses} style={{ marginTop: 0 }}>
           {field.label}
-          {field.required && <span className="required-mark">*</span>}
+          {field.required && <span className="text-[#c0771f] ml-0.5 font-bold">*</span>}
         </label>
         <input
           id={inputId}
           type={field.type === "number" ? "number" : "text"}
           value={value}
           onChange={(e) => handleFieldChange(field.name, e.target.value)}
-          className="form-single-code-input"
+          className={inputClasses}
         />
       </div>
     );
   };
 
   return (
-    <form className="form" onSubmit={handleSubmit}>
-      <h2 className="m-3">New SKU</h2>
+    <form className="max-w-[40rem] mx-auto" onSubmit={handleSubmit}>
+      <h2 className="text-2xl font-bold text-[#04151f] mb-6 pb-3 border-b-2 border-[#cdd2d6]">
+        New SKU
+      </h2>
 
       {/* SKU ID */}
-      <label htmlFor="sku-id" className="form-label">SKU ID</label>
+      <label htmlFor="sku-id" className={labelClasses} style={{ marginTop: 0 }}>
+        SKU ID
+      </label>
       <input
         id="sku-id"
         type="text"
         value={skuId}
         onChange={(e) => setSkuId(e.target.value)}
         placeholder={skuIdPlaceholder}
-        className="form-single-code-input"
+        className={inputClasses}
       />
 
       {/* Item (combined name + category) */}
-      <label htmlFor="item-name" className="form-label">Item</label>
-      <div className="item-input-container" ref={containerRef}>
+      <label htmlFor="item-name" className={labelClasses}>
+        Item
+      </label>
+      <div className="relative" ref={containerRef}>
         <input
           id="item-name"
           type="text"
@@ -577,57 +557,54 @@ export function NewSkuFormDynamic() {
           }}
           placeholder="Battery, Resistor, Antique toothbrush holder..."
           autoComplete="off"
-          className="form-single-code-input"
+          className={`${inputClasses} ${showSuggestions && totalOptions > 0 ? 'rounded-b-none border-b-[#082441]' : ''}`}
         />
 
         {/* Item type suggestions */}
         {showSuggestions && totalOptions > 0 && (
-          <ul className="item-suggestions">
-            {/* If no matches, show "+ New" at top */}
+          <ul className="absolute top-full left-0 right-0 m-0 py-1 list-none bg-[#082441] rounded-b-md shadow-[0_10px_25px_rgba(0,0,0,0.25),0_4px_10px_rgba(0,0,0,0.15)] z-[100] max-h-72 overflow-y-auto animate-[slideDown_0.1s_ease-out]">
             {showCreateNew && suggestions.length === 0 && (
               <li
-                className={`item-suggestion ${selectedSuggestionIndex === 0 ? "item-suggestion--selected" : ""}`}
+                className={`flex items-center gap-2 py-3 px-4 text-[#ecebe4] cursor-pointer transition-colors ${selectedSuggestionIndex === 0 ? 'bg-[#0c3764]' : 'hover:bg-[#0c3764]'}`}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   createNewItemType();
                 }}
                 onMouseEnter={() => setSelectedSuggestionIndex(0)}
               >
-                <span className="item-suggestion__plus">+</span>
-                <span className="item-suggestion__name">{itemName.trim()}</span>
-                <span className="item-suggestion__meta">(new item type)</span>
+                <span className="inline-flex items-center justify-center w-6 h-6 bg-[#c0771f]/20 text-[#c0771f] font-bold text-sm rounded">+</span>
+                <span className="font-medium">{itemName.trim()}</span>
+                <span className="text-[#ecebe4]/50 text-sm ml-auto">(new item type)</span>
               </li>
             )}
 
-            {/* Matching suggestions */}
             {suggestions.map((cat, index) => (
               <li
                 key={cat.id}
-                className={`item-suggestion ${index === selectedSuggestionIndex ? "item-suggestion--selected" : ""}`}
+                className={`flex items-center gap-2 py-3 px-4 text-[#ecebe4] cursor-pointer transition-colors ${index === selectedSuggestionIndex ? 'bg-[#0c3764]' : 'hover:bg-[#0c3764]'}`}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   selectCategory(cat);
                 }}
                 onMouseEnter={() => setSelectedSuggestionIndex(index)}
               >
-                <span className="item-suggestion__name">{cat.name}</span>
-                <span className="item-suggestion__meta">({cat.fields.length} fields)</span>
+                <span className="font-medium">{cat.name}</span>
+                <span className="text-[#ecebe4]/50 text-sm ml-auto">({cat.fields.length} fields)</span>
               </li>
             ))}
 
-            {/* If there are matches but no exact match, show "+ New" at bottom */}
             {showCreateNew && suggestions.length > 0 && (
               <li
-                className={`item-suggestion item-suggestion--create ${selectedSuggestionIndex === createNewIndex ? "item-suggestion--selected" : ""}`}
+                className={`flex items-center gap-2 py-3 px-4 text-[#ecebe4] cursor-pointer transition-colors border-t border-[#ecebe4]/10 mt-1 pt-3 ${selectedSuggestionIndex === createNewIndex ? 'bg-[#0c3764]' : 'hover:bg-[#0c3764]'}`}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   createNewItemType();
                 }}
                 onMouseEnter={() => setSelectedSuggestionIndex(createNewIndex)}
               >
-                <span className="item-suggestion__plus">+</span>
-                <span className="item-suggestion__name">{itemName.trim()}</span>
-                <span className="item-suggestion__meta">(new item type)</span>
+                <span className="inline-flex items-center justify-center w-6 h-6 bg-[#c0771f]/20 text-[#c0771f] font-bold text-sm rounded">+</span>
+                <span className="font-medium">{itemName.trim()}</span>
+                <span className="text-[#ecebe4]/50 text-sm ml-auto">(new item type)</span>
               </li>
             )}
           </ul>
@@ -636,11 +613,14 @@ export function NewSkuFormDynamic() {
 
       {/* Dynamic Fields */}
       {fieldStates.length > 0 && (
-        <div className="dynamic-fields-section">
-          <h3 className="dynamic-fields-title">{selectedCategory?.name} Attributes</h3>
+        <div className="mt-7 pt-5 border-t-2 border-[#cdd2d6]">
+          <h3 className="text-base font-bold text-[#04151f] mb-3 flex items-center gap-2">
+            <span className="block w-1 h-5 bg-[#c0771f] rounded-sm"></span>
+            {selectedCategory?.name} Attributes
+          </h3>
           {fieldStates.map((fs, index) => renderField(fs, index))}
           {activeMixins.length > 0 && (
-            <div className="active-mixins">
+            <div className="mt-4 py-2 px-3 text-sm text-[#6d635d] bg-[#cdd2d6]/30 rounded inline-block">
               Active: {activeMixins.map((m) => m.name).join(", ")}
             </div>
           )}
@@ -648,79 +628,90 @@ export function NewSkuFormDynamic() {
       )}
 
       {/* Codes Section */}
-      <div className="codes-section">
-        <h3 className="dynamic-fields-title">Codes</h3>
-        <div className="codes-list">
+      <div className="mt-7 pt-5 border-t-2 border-[#cdd2d6]">
+        <h3 className="text-base font-bold text-[#04151f] mb-3 flex items-center gap-2">
+          <span className="block w-1 h-5 bg-[#c0771f] rounded-sm"></span>
+          Codes
+        </h3>
+        <div className="flex flex-col gap-2">
           {codes.map((code, index) => {
             const isLastRow = index === codes.length - 1;
             return (
-              <div key={code.id} className="code-row">
-                <div className="code-input-wrapper">
-                  <input
-                    type="text"
-                    value={code.value}
-                    onChange={(e) => handleCodeChange(code.id, e.target.value)}
-                    onKeyDown={(e) => handleCodeKeyDown(e, code.id, index)}
-                    onFocus={handleCodeFocus}
-                    onBlur={() => handleCodeBlur(code.id, index)}
-                    placeholder="Scan or type code..."
-                    className="form-single-code-input code-input"
-                    data-code-id={code.id}
-                  />
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    className={`code-ownership-badge ${code.isOwned ? "code-ownership-badge--owned" : ""}`}
-                    onClick={() => toggleCodeOwnership(code.id)}
-                    title={code.isOwned ? "Owned (uniquely identifies)" : "Associated (shared)"}
-                  >
-                    {code.isOwned ? "Owned" : "Assoc"}
-                  </button>
+              <div key={code.id} className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 relative flex items-stretch">
+                    <input
+                      type="text"
+                      value={code.value}
+                      onChange={(e) => handleCodeChange(code.id, e.target.value)}
+                      onKeyDown={(e) => handleCodeKeyDown(e, code.id, index)}
+                      onFocus={handleCodeFocus}
+                      onBlur={() => handleCodeBlur(code.id, index)}
+                      placeholder="Scan or type code..."
+                      className={`${inputClasses} flex-1 ${code.value ? 'pr-20' : ''}`}
+                      data-code-id={code.id}
+                    />
+                    {code.value && (
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        className={`absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
+                          code.isOwned
+                            ? 'bg-[#26532b] text-white hover:bg-[#1e4423]'
+                            : 'bg-[#cdd2d6] text-[#6d635d] hover:bg-[#b8bfc5]'
+                        }`}
+                        onClick={() => toggleCodeOwnership(code.id)}
+                        title={code.isOwned ? "Owned (uniquely identifies)" : "Associated (shared)"}
+                      >
+                        {code.isOwned ? "Owned" : "Assoc"}
+                      </button>
+                    )}
+                  </div>
+                  {isLastRow ? (
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className="py-2.5 px-3.5 text-base font-semibold border border-[#cdd2d6] rounded-md bg-transparent text-gray-400 hover:bg-[#e8f4e8] hover:border-[#26532b] hover:text-[#26532b] transition-colors"
+                      onClick={() => handlePlusClick(code.id)}
+                      title="Add code"
+                    >
+                      +
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className="py-2.5 px-3.5 text-base font-semibold border border-[#cdd2d6] rounded-md bg-transparent text-gray-400 hover:bg-red-100 hover:border-red-400 hover:text-red-600 transition-colors"
+                      onClick={() => removeCode(code.id)}
+                      title="Remove code"
+                    >
+                      ×
+                    </button>
+                  )}
                 </div>
-                {isLastRow ? (
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    className="code-add"
-                    onClick={() => handlePlusClick(code.id)}
-                    title="Add code"
-                  >
-                    +
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    className="code-remove"
-                    onClick={() => removeCode(code.id)}
-                    title="Remove code"
-                  >
-                    ×
-                  </button>
-                )}
                 {/* Show shared SKUs for associated codes */}
                 {!code.isOwned && code.usedBy.length > 0 && !code.isLoading && (
-                  <div className="code-shared-info">
-                    <span className="code-shared-label">Shared with:</span>
+                  <div className="flex items-center gap-2 text-xs flex-wrap pl-1">
+                    <span className="text-[#6d635d]">Shared with:</span>
                     {code.usedBy.slice(0, 3).map((ref) => (
                       <a
                         key={ref.id}
                         href={`/${ref.type}/${ref.id}`}
-                        className="code-shared-link"
+                        className="px-2 py-0.5 bg-[#082441] text-[#ecebe4] rounded text-xs hover:bg-[#0c3764] transition-colors"
                         onClick={(e) => e.preventDefault()}
                       >
                         {ref.name || ref.id}
                       </a>
                     ))}
                     {code.usedBy.length > 3 && (
-                      <span className="code-shared-more">
+                      <span className="text-gray-400 italic">
                         +{code.usedBy.length - 3} more
                       </span>
                     )}
                   </div>
                 )}
                 {code.isLoading && (
-                  <div className="code-loading">...</div>
+                  <span className="text-sm text-gray-400 pl-1">...</span>
                 )}
               </div>
             );
@@ -728,10 +719,19 @@ export function NewSkuFormDynamic() {
         </div>
       </div>
 
-      {/* Submit */}
-      <div className="form-actions">
-        <input type="submit" value="Create SKU" className="form-submit" />
-        <button type="button" onClick={resetForm} className="form-reset">
+      {/* Actions */}
+      <div className="flex gap-3 mt-8 pt-6 border-t border-[#cdd2d6]">
+        <button
+          type="submit"
+          className="flex-1 py-3 px-6 text-base font-semibold bg-[#26532b] text-white rounded-md hover:bg-[#1e4423] active:scale-[0.98] transition-all cursor-pointer"
+        >
+          Create SKU
+        </button>
+        <button
+          type="button"
+          onClick={resetForm}
+          className="py-3 px-5 text-base font-medium bg-transparent text-[#6d635d] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] hover:text-[#04151f] transition-colors cursor-pointer"
+        >
           Reset
         </button>
       </div>
