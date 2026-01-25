@@ -21,14 +21,15 @@ import Bin from "./Bin";
 import { FourOhFour } from "./FourOhFour";
 import SearchForm from "./SearchForm";
 import Sku from "./Sku";
-import NewSkuFormDynamic from "./NewSkuFormDynamic";
+import NewSkuForm from "./NewSkuForm";
+import NewBatchForm from "./NewBatchForm";
 import EULA from "./EULA";
-import DefineBatch from "./DefineBatch";
 import Batch from "./Batch";
 // Receive component removed - will be redesigned
 import MoveItem from "./MoveItem";
 import Release from "./Release";
 import Audit from "./Audit";
+import SchemaDemo from "./SchemaDemo";
 
 /**
  * Main app component
@@ -66,8 +67,8 @@ function App() {
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/new/bin" element={<NewBin />} />
-                <Route path="/new/sku" element={<NewSkuFormDynamic />} />
-                <Route path="/new/batch" element={<DefineBatch />} />
+                <Route path="/new/sku" element={<NewSkuForm />} />
+                <Route path="/new/batch" element={<NewBatchForm />} />
                 <Route path="/bin/:id" element={<Bin />} />
                 <Route path="/sku/:id/edit" element={<Sku editable />} />
                 <Route path="/sku/:id" element={<Sku />} />
@@ -79,6 +80,7 @@ function App() {
                 <Route path="/move" element={<MoveItem />} />
                 <Route path="/search" element={<SearchForm />} />
                 <Route path="/legal" element={<EULA />} />
+                <Route path="/demo/schema" element={<SchemaDemo />} />
                 <Route path="*" element={<FourOhFour />} />
               </Routes>
             </ToastContext.Provider>
