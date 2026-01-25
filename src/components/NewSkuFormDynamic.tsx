@@ -6,6 +6,8 @@ import { ApiContext, FrontloadContext } from "../api-client/api-client";
 import { Category, SchemaField, Mixin, CodeUsageRef } from "../api-client/data-models";
 import { ToastContext } from "./Toast";
 import { labelClasses, inputClasses } from "./DynamicFieldSection";
+import ItemLabel from "./ItemLabel";
+import PrintButton from "./PrintButton";
 
 interface CodeEntry {
   id: string;
@@ -410,39 +412,32 @@ export function NewSkuFormDynamic() {
       .filter((c) => c.value.trim() && !c.isOwned)
       .map((c) => c.value.trim());
 
-    console.log("Creating SKU:", {
+    const resp = await api.createSku({
       id: skuId || skuIdPlaceholder,
       name: itemName,
-      props,
-      owned_codes: ownedCodes,
-      associated_codes: associatedCodes,
-      activeMixins: activeMixins.map((m) => m.id),
+      props: Object.keys(props).length > 0 ? props : undefined,
+      owned_codes: ownedCodes.length > 0 ? ownedCodes : undefined,
+      associated_codes: associatedCodes.length > 0 ? associatedCodes : undefined,
     });
 
-    setToastContent({
-      content: (
-        <div>
-          <p style={{ fontWeight: 600 }}>SKU Created (Mock)</p>
-          <p style={{ fontSize: "0.875rem" }}>
-            {skuId || skuIdPlaceholder}: {itemName || "(unnamed)"}
+    if (resp.kind === "status") {
+      setToastContent({
+        content: (
+          <p>
+            Success,{" "}
+            <ItemLabel url={resp.Id} onClick={() => setToastContent({})} />{" "}
+            created.
           </p>
-          <pre style={{
-            fontSize: "0.75rem",
-            marginTop: "0.5rem",
-            backgroundColor: "#cdd2d6",
-            padding: "0.5rem",
-            borderRadius: "0.25rem",
-            overflow: "auto",
-            maxHeight: "8rem"
-          }}>
-            {JSON.stringify(props, null, 2)}
-          </pre>
-        </div>
-      ),
-      mode: "success",
-    });
-
-    await resetForm();
+        ),
+        mode: "success",
+      });
+      await resetForm();
+    } else {
+      setToastContent({
+        content: <p>{resp.title}</p>,
+        mode: "failure",
+      });
+    }
   };
 
   const renderField = (fs: FieldState, index: number) => {
@@ -530,14 +525,17 @@ export function NewSkuFormDynamic() {
       <label htmlFor="sku-id" className={labelClasses} style={{ marginTop: 0 }}>
         SKU ID
       </label>
-      <input
-        id="sku-id"
-        type="text"
-        value={skuId}
-        onChange={(e) => setSkuId(e.target.value)}
-        placeholder={skuIdPlaceholder}
-        className={inputClasses}
-      />
+      <div className="flex items-center gap-2">
+        <input
+          id="sku-id"
+          type="text"
+          value={skuId}
+          onChange={(e) => setSkuId(e.target.value)}
+          placeholder={skuIdPlaceholder}
+          className={inputClasses + " flex-1"}
+        />
+        <PrintButton value={skuId || skuIdPlaceholder} />
+      </div>
 
       {/* Item Type (trigger field for item-type bundles) */}
       <label htmlFor="item-name" className={labelClasses}>
