@@ -1,14 +1,19 @@
 import * as React from "react";
-import { useState, useContext } from "react";
-import { ToastContext } from "./Toast";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 import "../styles/PrintButton.css";
+
+type ButtonState = "idle" | "queued" | "printing";
+
+const POLL_INTERVAL_MS = 500;
+const TIMEOUT_MS = 30000;
 
 /**
  * Print Label Button Component
  *
  * Submits a print job to the print service API.
  * Automatically selects the first online printer.
+ * Tracks job status: idle -> queued -> printing -> idle
  *
  * @category Components
  * @param props
@@ -16,14 +21,63 @@ import "../styles/PrintButton.css";
  * @returns {ReactNode}
  */
 function PrintButton({ value }: { value: string }) {
-  const [isPrinting, setIsPrinting] = useState(false);
-  const { setToastContent } = useContext(ToastContext);
+  const [buttonState, setButtonState] = useState<ButtonState>("idle");
+  const pollIntervalRef = useRef<number | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+  const jobIdRef = useRef<string | null>(null);
+
+  const cleanup = useCallback(() => {
+    if (pollIntervalRef.current !== null) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    if (timeoutRef.current !== null) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    jobIdRef.current = null;
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanup;
+  }, [cleanup]);
+
+  const pollJobStatus = useCallback(async () => {
+    if (!jobIdRef.current) return;
+
+    try {
+      const resp = await fetch(`/api/print/jobs/${jobIdRef.current}`);
+      if (!resp.ok) {
+        // Job not found or error - reset to idle
+        cleanup();
+        setButtonState("idle");
+        return;
+      }
+
+      const data = await resp.json();
+      const status = data.status;
+
+      if (status === "printing") {
+        setButtonState("printing");
+      } else if (status === "completed" || status === "failed") {
+        cleanup();
+        setButtonState("idle");
+      }
+      // If still "pending", keep polling with current state
+    } catch {
+      // Network error - reset to idle
+      cleanup();
+      setButtonState("idle");
+    }
+  }, [cleanup]);
 
   const handlePrint = async (e: React.MouseEvent) => {
     e.preventDefault();
-    if (isPrinting || !value) return;
+    if (buttonState !== "idle" || !value) return;
 
-    setIsPrinting(true);
+    setButtonState("queued");
+
     try {
       // Get available printers
       const printersResp = await fetch("/api/print/printers");
@@ -38,10 +92,7 @@ function PrintButton({ value }: { value: string }) {
       );
 
       if (!onlinePrinter) {
-        setToastContent({
-          content: <p>No printer online</p>,
-          mode: "failure",
-        });
+        setButtonState("idle");
         return;
       }
 
@@ -56,31 +107,40 @@ function PrintButton({ value }: { value: string }) {
       });
 
       if (!jobResp.ok) {
-        const error = await jobResp.json();
-        throw new Error(error.error || "Print failed");
+        setButtonState("idle");
+        return;
       }
 
-      setToastContent({
-        content: <p>Printing {value}</p>,
-        mode: "success",
-      });
-    } catch (err) {
-      setToastContent({
-        content: <p>{err instanceof Error ? err.message : "Print failed"}</p>,
-        mode: "failure",
-      });
-    } finally {
-      setIsPrinting(false);
+      const jobData = await jobResp.json();
+      jobIdRef.current = jobData.job_id;
+
+      // Start polling for status updates
+      pollIntervalRef.current = window.setInterval(pollJobStatus, POLL_INTERVAL_MS);
+
+      // Set timeout to prevent stuck states
+      timeoutRef.current = window.setTimeout(() => {
+        cleanup();
+        setButtonState("idle");
+      }, TIMEOUT_MS);
+    } catch {
+      setButtonState("idle");
     }
   };
+
+  const buttonText = {
+    idle: "Print",
+    queued: "Queue",
+    printing: "Printing",
+  }[buttonState];
 
   return (
     <button
       className="form-print-button"
       onClick={handlePrint}
-      disabled={isPrinting || !value}
+      disabled={buttonState !== "idle" || !value}
+      data-state={buttonState}
     >
-      {isPrinting ? "..." : "Print"}
+      {buttonText}
     </button>
   );
 }
