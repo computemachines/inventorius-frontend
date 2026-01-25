@@ -29,6 +29,9 @@ module.exports = {
     port: 8080,
     hot: "only",
     proxy: [
+      // Print service - must come before /api to match first
+      { context: ["/api/print"], target: "http://localhost:5000" },
+      // Main API
       { context: ["/api"], target: "http://localhost:8000" }
     ],
   },
