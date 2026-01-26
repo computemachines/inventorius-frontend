@@ -30,6 +30,7 @@ import MoveItem from "./MoveItem";
 import Release from "./Release";
 import Audit from "./Audit";
 import SchemaDemo from "./SchemaDemo";
+import SchemaAdmin from "./SchemaAdmin";
 
 /**
  * Main app component
@@ -81,6 +82,7 @@ function App() {
                 <Route path="/search" element={<SearchForm />} />
                 <Route path="/legal" element={<EULA />} />
                 <Route path="/demo/schema" element={<SchemaDemo />} />
+                <Route path="/admin/schema" element={<SchemaAdmin />} />
                 <Route path="*" element={<FourOhFour />} />
               </Routes>
             </ToastContext.Provider>
