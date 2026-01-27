@@ -1,5 +1,9 @@
 import * as React from "react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useContext } from "react";
+import { ApiContext } from "../api-client/api-client";
+import { SchemaField } from "../hooks/useSchemaForm";
+import { SchemaFieldList, labelClasses, inputClasses } from "./SchemaFields";
+import FormSection from "./FormSection";
 
 /**
  * Schema Admin - Low-level editor for mixin schemas
@@ -14,43 +18,16 @@ import { useState, useEffect, useMemo } from "react";
  * - #6d635d muted text
  */
 
-// Simple fetch wrapper for schema API
-async function apiRequest(path: string, method: string = "GET", body?: unknown): Promise<unknown> {
-  const options: RequestInit = {
-    method,
-    headers: { "Content-Type": "application/json" },
-  };
-  if (body) {
-    options.body = JSON.stringify(body);
-  }
-  const resp = await fetch(path, options);
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ error: resp.statusText }));
-    throw new Error((err as {error?: string; message?: string}).error || (err as {message?: string}).message || "Request failed");
-  }
-  return resp.json();
-}
-
-// Shared Tailwind classes matching design system
-const labelClasses = "block text-[0.75rem] font-semibold text-[#04151f] uppercase tracking-wide mb-1";
-const inputClasses = "py-2 px-3 text-sm border border-[#cdd2d6] rounded bg-white text-[#04151f] focus:outline-none focus:border-[#0c3764] focus:ring-2 focus:ring-[#0c3764]/15";
-const selectClasses = `${inputClasses} cursor-pointer appearance-none bg-[url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2304151f' d='M6 8L1 3h10z'/%3E%3C/svg%3E")] bg-no-repeat bg-[right_0.5rem_center] pr-8`;
+// Shared Tailwind classes for admin editors (slightly smaller than form fields)
+const adminInputClasses = "py-2 px-3 text-sm border border-[#cdd2d6] rounded bg-white text-[#04151f] focus:outline-none focus:border-[#0c3764] focus:ring-2 focus:ring-[#0c3764]/15";
+const selectClasses = `${adminInputClasses} cursor-pointer appearance-none bg-[url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2304151f' d='M6 8L1 3h10z'/%3E%3C/svg%3E")] bg-no-repeat bg-[right_0.5rem_center] pr-8`;
 const btnPrimary = "py-2 px-4 text-sm font-semibold bg-[#26532b] text-white rounded hover:bg-[#1e4423] transition-colors";
-const btnDanger = "py-2 px-4 text-sm font-semibold bg-red-600 text-white rounded hover:bg-red-700 transition-colors";
 const btnSecondary = "py-2 px-4 text-sm font-medium bg-white text-[#04151f] border border-[#cdd2d6] rounded hover:bg-[#f0f0f0] transition-colors";
-// Buttons for dark backgrounds - color theory optimized for white text legibility
-// Deeper colors reduce chromatic aberration and halation, improving text edge sharpness
+// Buttons for dark backgrounds - deeper colors reduce chromatic aberration/halation
 const btnSaveLight = "py-1.5 px-3 text-xs font-semibold bg-emerald-700 text-white rounded hover:bg-emerald-600 transition-colors";
 const btnDeleteLight = "py-1.5 px-3 text-xs font-semibold bg-red-800 text-white rounded hover:bg-red-700 transition-colors";
 
-// Types that mirror the API exactly
-interface SchemaField {
-  name: string;
-  type: "text" | "number" | "enum" | "bool" | "unit";
-  options?: string[];
-  unit?: string;
-  required?: boolean;
-}
+// Types that mirror the API exactly (SchemaField is imported from useSchemaForm)
 
 interface TriggerCondition {
   field: string;
@@ -566,7 +543,7 @@ function IntersectionEditor({
   );
 }
 
-// Test Panel Component
+// Test Panel Component - Form Preview (uses SchemaFieldList for consistent rendering)
 function TestPanel({
   schemaName,
   schema,
@@ -574,19 +551,17 @@ function TestPanel({
   schemaName: string;
   schema: Schema;
 }) {
+  const api = useContext(ApiContext);
   const [activeMixins, setActiveMixins] = useState<string[]>(schema.root_mixins.slice(0, 1));
-  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [fieldValues, setFieldValues] = useState<Record<string, string | boolean>>({});
   const [result, setResult] = useState<{ active_mixins: string[]; available_fields: SchemaField[] } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const runTest = async () => {
     setLoading(true);
     try {
-      const resp = await apiRequest(`/api/schema/${schemaName}/evaluate`, "POST", {
-        active_mixins: activeMixins,
-        field_values: fieldValues,
-      }) as { active_mixins: string[]; available_fields: SchemaField[] };
-      setResult(resp);
+      const resp = await api.evaluateSchema(schemaName, activeMixins, fieldValues);
+      setResult(resp as { active_mixins: string[]; available_fields: SchemaField[] });
     } catch (e) {
       console.error(e);
     }
@@ -600,99 +575,119 @@ function TestPanel({
     }
   }, [activeMixins, fieldValues, schemaName]);
 
-  const handleFieldChange = (name: string, value: string) => {
+  const handleFieldChange = (name: string, value: string | boolean) => {
     setFieldValues((prev) => ({ ...prev, [name]: value }));
   };
 
-  return (
-    <div className="p-4 bg-[#e8f4e8] border border-[#26532b]/30 rounded-lg">
-      <h4 className="text-sm font-bold text-[#04151f] mb-3 flex items-center gap-2">
-        <span className="w-1.5 h-4 bg-[#26532b] rounded-sm"></span>
-        Test Schema Evaluation
-      </h4>
+  const handleReset = () => {
+    setFieldValues({});
+    setActiveMixins(schema.root_mixins.slice(0, 1));
+    setResult(null);
+  };
 
-      {/* Starting mixin selector */}
-      <div className="mb-3">
-        <label className={labelClasses}>Starting Mixin</label>
-        <select
-          value={activeMixins[0] || ""}
-          onChange={(e) => {
-            setActiveMixins([e.target.value]);
-            setFieldValues({});
-            setResult(null);
-          }}
-          className={`${selectClasses} w-48`}
-        >
-          {schema.root_mixins.map((m) => (
-            <option key={m} value={m}>{m}</option>
-          ))}
-        </select>
+  // Separate trigger field from other fields
+  const triggerField = result?.available_fields.find(
+    (f) => f.name === "item_type" || f.name === "source"
+  );
+  const otherFields = result?.available_fields.filter(
+    (f) => f.name !== "item_type" && f.name !== "source"
+  ) || [];
+
+  // Determine title for dynamic fields section
+  const triggerValue = triggerField ? fieldValues[triggerField.name] : null;
+  const dynamicSectionTitle = triggerValue
+    ? `${triggerValue} Attributes`
+    : "Dynamic Fields";
+
+  return (
+    <div className="bg-white border border-[#cdd2d6] rounded-lg shadow-sm">
+      {/* Form Header */}
+      <div className="px-6 py-4 border-b-2 border-[#cdd2d6]">
+        <h3 className="text-xl font-bold text-[#04151f]">
+          Form Preview: {schemaName === "sku" ? "New SKU" : "New Batch"}
+        </h3>
+        <p className="text-sm text-[#6d635d] mt-1">
+          Test how the form renders with different field values
+        </p>
       </div>
 
-      {/* Field inputs based on result */}
-      {result && result.available_fields.length > 0 && (
-        <div className="mb-3">
-          <label className={labelClasses}>Field Values</label>
-          <div className="grid grid-cols-2 gap-2">
-            {result.available_fields.map((field) => (
-              <div key={field.name} className="flex items-center gap-2">
-                <span className="text-xs text-[#6d635d] w-24 truncate" title={field.name}>
-                  {field.name}:
-                </span>
-                {field.type === "enum" && field.options ? (
-                  <select
-                    value={fieldValues[field.name] || ""}
-                    onChange={(e) => handleFieldChange(field.name, e.target.value)}
-                    className={`${selectClasses} flex-1 py-1 text-xs`}
-                  >
-                    <option value="">--</option>
-                    {field.options.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={fieldValues[field.name] || ""}
-                    onChange={(e) => handleFieldChange(field.name, e.target.value)}
-                    placeholder={field.unit ? `(${field.unit})` : ""}
-                    className={`${inputClasses} flex-1 py-1 text-xs`}
-                  />
-                )}
+      <div className="p-6">
+        {/* Root Mixin Selector */}
+        <div className="mb-4">
+          <label className={labelClasses}>Starting Schema</label>
+          <select
+            value={activeMixins[0] || ""}
+            onChange={(e) => {
+              setActiveMixins([e.target.value]);
+              setFieldValues({});
+              setResult(null);
+            }}
+            className={`${selectClasses} w-64`}
+          >
+            {schema.root_mixins.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Trigger Field (Item Type / Source) - rendered without typeahead in preview */}
+        {triggerField && (
+          <SchemaFieldList
+            fields={[triggerField]}
+            values={fieldValues}
+            onChange={handleFieldChange}
+          />
+        )}
+
+        {/* Dynamic Fields Section */}
+        {otherFields.length > 0 && (
+          <FormSection title={dynamicSectionTitle} accent="amber">
+            <SchemaFieldList
+              fields={otherFields}
+              values={fieldValues}
+              onChange={handleFieldChange}
+            />
+
+            {/* Active mixins indicator */}
+            {result && result.active_mixins.length > 1 && (
+              <div className="mt-4 py-2 px-3 text-sm text-[#6d635d] bg-[#cdd2d6]/30 rounded inline-block">
+                Active: {result.active_mixins.slice(1).join(" → ")}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            )}
+          </FormSection>
+        )}
 
-      {/* Results */}
-      {result && (
-        <div className="mt-4 pt-3 border-t border-[#26532b]/20">
-          <div className="text-xs text-[#6d635d] mb-2">
-            <strong>Active Mixins:</strong>{" "}
-            {result.active_mixins.map((m, i) => (
-              <span key={m}>
-                {i > 0 && " → "}
-                <span className="px-1.5 py-0.5 bg-[#082441] text-white rounded text-xs">{m}</span>
-              </span>
-            ))}
-          </div>
-          <div className="text-xs text-[#6d635d]">
-            <strong>Available Fields:</strong>{" "}
-            {result.available_fields.map((f) => f.name).join(", ")}
-          </div>
+        {/* Form Actions */}
+        <div className="flex gap-3 mt-8 pt-6 border-t border-[#cdd2d6]">
+          <button
+            type="button"
+            disabled
+            className="flex-1 py-3 px-6 text-base font-semibold bg-[#26532b]/50 text-white rounded-md cursor-not-allowed"
+          >
+            Create {schemaName === "sku" ? "SKU" : "Batch"} (Preview)
+          </button>
+          <button
+            type="button"
+            onClick={handleReset}
+            className="py-3 px-5 text-base font-medium bg-transparent text-[#6d635d] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] hover:text-[#04151f] transition-colors cursor-pointer"
+          >
+            Reset
+          </button>
         </div>
-      )}
 
-      {loading && (
-        <div className="text-xs text-[#6d635d] mt-2">Evaluating...</div>
-      )}
+        {loading && (
+          <div className="fixed bottom-4 right-4 bg-[#082441] text-white px-4 py-2 rounded-lg shadow-lg">
+            Evaluating...
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 // Main Component
 export default function SchemaAdmin() {
+  const api = useContext(ApiContext);
   const [schemaName, setSchemaName] = useState("sku");
   const [schema, setSchema] = useState<Schema | null>(null);
   const [availableSchemas, setAvailableSchemas] = useState<string[]>([]);
@@ -702,24 +697,27 @@ export default function SchemaAdmin() {
 
   // Load available schemas
   useEffect(() => {
-    apiRequest("/api/schema/list", "GET").then((data) => {
-      setAvailableSchemas((data as { schemas: string[] }).schemas || []);
-    });
-  }, []);
+    api.listSchemas().then(setAvailableSchemas);
+  }, [api]);
 
   // Load selected schema
   useEffect(() => {
     if (schemaName) {
-      apiRequest(`/api/schema/${schemaName}`, "GET")
+      api.getSchema(schemaName)
         .then((data) => {
           setSchema(data as Schema);
           setStatus("");
         })
         .catch((err) => setStatus(`Error loading: ${(err as Error).message}`));
     }
-  }, [schemaName]);
+  }, [schemaName, api]);
 
   const availableMixins = useMemo(() => schema ? Object.keys(schema.mixins) : [], [schema]);
+
+  const reloadSchema = async () => {
+    const data = await api.getSchema(schemaName);
+    setSchema(data as Schema);
+  };
 
   const saveMixin = async (mixinName: string, mixin: Mixin) => {
     // Validate first
@@ -730,10 +728,9 @@ export default function SchemaAdmin() {
     }
 
     try {
-      await apiRequest(`/api/schema/${schemaName}/mixin/${mixinName}`, "PUT", mixin);
+      await api.saveMixin(schemaName, mixinName, mixin);
       setStatus(`Saved: ${mixinName}`);
-      const data = await apiRequest(`/api/schema/${schemaName}`, "GET");
-      setSchema(data as Schema);
+      await reloadSchema();
       setNewMixin(null);
       setTimeout(() => setStatus(""), 2000);
     } catch (err) {
@@ -744,10 +741,9 @@ export default function SchemaAdmin() {
   const deleteMixin = async (mixinName: string) => {
     if (!confirm(`Delete mixin "${mixinName}"?`)) return;
     try {
-      await apiRequest(`/api/schema/${schemaName}/mixin/${mixinName}`, "DELETE");
+      await api.deleteMixin(schemaName, mixinName);
       setStatus(`Deleted: ${mixinName}`);
-      const data = await apiRequest(`/api/schema/${schemaName}`, "GET");
-      setSchema(data as Schema);
+      await reloadSchema();
       setTimeout(() => setStatus(""), 2000);
     } catch (err) {
       setStatus(`Error: ${(err as Error).message}`);
@@ -768,7 +764,7 @@ export default function SchemaAdmin() {
     }
 
     try {
-      await apiRequest(`/api/schema/${schemaName}`, "PUT", schema);
+      await api.saveSchema(schemaName, schema);
       setStatus("Schema saved");
       setTimeout(() => setStatus(""), 2000);
     } catch (err) {
@@ -830,9 +826,8 @@ export default function SchemaAdmin() {
                   {r}
                   <button
                     onClick={async () => {
-                      await apiRequest(`/api/schema/${schemaName}/root/${r}`, "DELETE");
-                      const data = await apiRequest(`/api/schema/${schemaName}`, "GET");
-                      setSchema(data as Schema);
+                      await api.removeRootMixin(schemaName, r);
+                      await reloadSchema();
                     }}
                     className="hover:text-red-300 ml-1 text-white/60"
                   >
@@ -843,9 +838,8 @@ export default function SchemaAdmin() {
               <select
                 onChange={async (e) => {
                   if (e.target.value) {
-                    await apiRequest(`/api/schema/${schemaName}/root/${e.target.value}`, "PUT");
-                    const data = await apiRequest(`/api/schema/${schemaName}`, "GET");
-                    setSchema(data as Schema);
+                    await api.addRootMixin(schemaName, e.target.value);
+                    await reloadSchema();
                     e.target.value = "";
                   }
                 }}
