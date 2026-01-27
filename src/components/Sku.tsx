@@ -1,10 +1,9 @@
 import * as React from "react";
 import { useFrontload } from "react-frontload";
-import { generatePath, useNavigate, useParams } from "react-router-dom";
+import { generatePath, useNavigate, useParams, Link } from "react-router-dom";
 import { ApiContext, FrontloadContext } from "../api-client/api-client";
-import { Sku as ApiSku } from "../api-client/data-models";
+import { Sku as ApiSku, Unit1 } from "../api-client/data-models";
 import ReactModal from "react-modal";
-import { Link } from "react-router-dom";
 
 import "../styles/infoPanel.css";
 import CodesInput, { Code } from "./CodesInput";
@@ -15,6 +14,10 @@ import ItemLocations from "./ItemLocations";
 import { useContext, useEffect, useState } from "react";
 import { ToastContext } from "./Toast";
 import { stringifyUrl } from "query-string";
+import PropertiesTable, {
+  api_props_from_properties,
+  Property,
+} from "./PropertiesTable";
 
 function Sku({ editable = false }: { editable?: boolean }) {
   const { id } = useParams<{ id: string }>();
@@ -23,9 +26,11 @@ function Sku({ editable = false }: { editable?: boolean }) {
     async ({ api }: FrontloadContext) => {
       const sku = await api.getSku(id);
       const skuBins = sku.kind == "sku" ? await sku.bins() : sku;
+      const skuBatches = sku.kind == "sku" ? await sku.batches() : sku;
       return {
         sku,
         skuBins,
+        skuBatches,
       };
     }
   );
@@ -37,6 +42,7 @@ function Sku({ editable = false }: { editable?: boolean }) {
   const navigate = useNavigate();
   const [unsavedName, setUnsavedName] = useState("");
   const [unsavedCodes, setUnsavedCodes] = useState([]);
+  const [unsavedProperties, setUnsavedProperties] = useState<Property[]>([]);
   const api = useContext(ApiContext);
 
   useEffect(() => {
@@ -63,6 +69,40 @@ function Sku({ editable = false }: { editable?: boolean }) {
         })),
       ];
       setUnsavedCodes(newUnsavedCodes);
+
+      // Load props into Property objects
+      setUnsavedProperties(
+        Object.entries(data.sku.state.props || {}).map(([name, value]) => {
+          let typed;
+          if (typeof value == "undefined") {
+            throw new Error("Api returned empty property: " + name);
+          }
+          if (typeof value == "number") {
+            typed = { kind: "number", value: value };
+          } else if (typeof value == "string") {
+            typed = { kind: "string", value: value };
+          } else if (typeof value == "object") {
+            if ("unit" in value && "value" in value) {
+              const physical = new Unit1(
+                value as { unit: string; value: number }
+              );
+              switch (physical.unit) {
+                case "USD":
+                  typed = { kind: "currency", value: physical.value };
+                  break;
+                default:
+                  throw new Error("Unsupported api unit type: " + physical.unit);
+              }
+            } else {
+              // Generic object - stringify it
+              typed = { kind: "string", value: JSON.stringify(value) };
+            }
+          } else {
+            typed = { kind: "string", value: String(value) };
+          }
+          return new Property({ name, typed });
+        })
+      );
     }
   }, [frontloadMeta, saveState, data]);
 
@@ -104,7 +144,9 @@ function Sku({ editable = false }: { editable?: boolean }) {
               const updatedSku = await api.getSku(id);
               const updatedSkuBins =
                 updatedSku.kind == "sku" ? await updatedSku.bins() : updatedSku;
-              setData(() => ({ sku: updatedSku, skuBins: updatedSkuBins }));
+              const updatedSkuBatches =
+                updatedSku.kind == "sku" ? await updatedSku.batches() : updatedSku;
+              setData(() => ({ sku: updatedSku, skuBins: updatedSkuBins, skuBatches: updatedSkuBatches }));
             } else {
               setAlertContent({
                 content: <p>{resp.title}</p>,
@@ -144,7 +186,23 @@ function Sku({ editable = false }: { editable?: boolean }) {
       </div>
       <div className="info-item">
         <div className="info-item-title">Derived Batches</div>
-        <div className="info-item-description">TODO</div>
+        <div className="info-item-description">
+          {data.skuBatches.kind == "sku-batches" ? (
+            data.skuBatches.state.length > 0 ? (
+              <ul style={{ margin: 0, paddingLeft: "1.2em" }}>
+                {data.skuBatches.state.map((batchId) => (
+                  <li key={batchId}>
+                    <ItemLabel link={true} label={batchId} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              "None"
+            )
+          ) : (
+            "Problem loading batches."
+          )}
+        </div>
       </div>
       <div className="info-item">
         <div className="info-item-title">Locations</div>
@@ -173,6 +231,23 @@ function Sku({ editable = false }: { editable?: boolean }) {
           )}
         </div>
       </div>
+      <div className="info-item">
+        <div className="info-item-title">Properties</div>
+        <div className="info-item-description">
+          {unsavedProperties.length == 0 && !editable ? (
+            "None"
+          ) : (
+            <PropertiesTable
+              editable={editable}
+              properties={unsavedProperties}
+              setProperties={(properties) => {
+                setSaveState("unsaved");
+                setUnsavedProperties(properties);
+              }}
+            />
+          )}
+        </div>
+      </div>
       {editable ? (
         <div className="edit-controls">
           <button
@@ -196,6 +271,7 @@ function Sku({ editable = false }: { editable?: boolean }) {
                 associated_codes: unsavedCodes
                   .filter(({ kind, value }) => kind == "associated" && value)
                   .map(({ value }) => value),
+                props: api_props_from_properties(unsavedProperties),
               });
 
               if (resp.kind == "problem") {
@@ -213,9 +289,10 @@ function Sku({ editable = false }: { editable?: boolean }) {
 
                 const updatedSku = await api.getSku(id);
 
-                setData(({ skuBins }) => ({
+                setData(({ skuBins, skuBatches }) => ({
                   sku: updatedSku,
                   skuBins,
+                  skuBatches,
                 }));
 
                 navigate(generatePath("/sku/:id", { id }));
