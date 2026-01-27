@@ -7,6 +7,7 @@
   border: unset;
   border-radius: 0.3em;
   padding: 0.4em;
+  transition: background-color 0.2s ease;
 }
 
 .form-print-button[data-state="queued"] {
@@ -17,6 +18,16 @@
 .form-print-button[data-state="printing"] {
   background-color: #26532b;
   cursor: wait;
+}
+
+.form-print-button[data-state="error"] {
+  background-color: #9e2a2a;
+  cursor: not-allowed;
+}
+
+.form-print-button[data-state="disconnected"] {
+  background-color: #6b6b6b;
+  cursor: not-allowed;
 }
 
 .form-print-button:disabled {
