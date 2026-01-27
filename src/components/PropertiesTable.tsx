@@ -4,7 +4,7 @@ import { CrossCircle } from "../img/lnr";
 import PlusCircle from "../img/lnr/PlusCircle";
 
 import "../styles/PropertiesTable.css";
-import AutocompleteInput from "./Autocomplete";
+import { TypeaheadField } from "./Typeahead";
 
 // export type PropertyType = "string" | "date" | "integer" | "float" | "currency" | "physical-unit";
 // export type PropertyType = "string";
@@ -171,10 +171,11 @@ function EditablePropertyInputRow({
 
   return (
     <div className="properties-table-row">
-      <AutocompleteInput
+      <TypeaheadField
         className="properties-table-row__name"
         value={property.name}
-        setValue={(name) => {
+        onChange={(name) => setProperty({ ...property, name })}
+        onSelect={(name) => {
           const predefined = predefinedProperties.find(
             (predefinedProperty) => name == predefinedProperty.name
           );
@@ -184,7 +185,7 @@ function EditablePropertyInputRow({
             setProperty({ ...property, name });
           }
         }}
-        suggestions={predefinedProperties.map((property) => property.name)}
+        items={predefinedProperties.map((property) => property.name)}
       />
       <select
         className="properties-table-row__type"

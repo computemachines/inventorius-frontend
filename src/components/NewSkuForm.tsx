@@ -3,11 +3,12 @@ import { useContext, useState, useCallback } from "react";
 import { useFrontload } from "react-frontload";
 
 import { ApiContext, FrontloadContext } from "../api-client/api-client";
-import { CodeUsageRef } from "../api-client/data-models";
+import { CodeUsageRef, AttributeBundle } from "../api-client/data-models";
 import { ToastContext } from "./Toast";
 import { useSchemaForm, SchemaField } from "../hooks/useSchemaForm";
 import ItemLabel from "./ItemLabel";
 import PrintButton from "./PrintButton";
+import { AsyncTypeaheadField } from "./Typeahead";
 
 // Shared Tailwind classes (design system)
 const labelClasses =
@@ -347,43 +348,60 @@ export function NewSkuForm() {
       );
     }
 
-    // Text field (default) - item_type gets special styling
+    // Item type field with typeahead
+    if (isTypeaheadField) {
+      return (
+        <div key={field.name} className="py-2">
+          <label htmlFor={inputId} className={labelClasses} style={{ marginTop: 0 }}>
+            {formatLabel(field.name)}
+            {field.required && <span className="text-[#c0771f] ml-0.5 font-bold">*</span>}
+          </label>
+          <AsyncTypeaheadField<AttributeBundle>
+            id={inputId}
+            value={(value as string) || ""}
+            onChange={(v) => schema.handleFieldChange(field.name, v)}
+            onSelect={(bundle) => schema.handleFieldChange(field.name, bundle.name)}
+            onSearch={async (query) => {
+              const result = await api.searchBundles("sku", "itemType", query, {
+                entityType: "sku",
+                activeBundleIds: [],
+              });
+              return result.bundles;
+            }}
+            getItemText={(b) => b.name}
+            getItemKey={(b) => b.id}
+            renderItem={(bundle) => (
+              <>
+                {bundle.name}
+                <span className="opacity-50 ml-2 text-sm">
+                  {bundle.fields.length} field{bundle.fields.length !== 1 ? "s" : ""}
+                </span>
+              </>
+            )}
+            placeholder="Resistor, Capacitor, Battery..."
+            clearable
+            allowCreate
+            onCreate={(inputValue) => schema.handleFieldChange(field.name, inputValue)}
+          />
+        </div>
+      );
+    }
+
+    // Text field (default)
     return (
       <div key={field.name} className="py-2">
         <label htmlFor={inputId} className={labelClasses} style={{ marginTop: 0 }}>
           {formatLabel(field.name)}
           {field.required && <span className="text-[#c0771f] ml-0.5 font-bold">*</span>}
         </label>
-        <div className="relative">
-          <input
-            id={inputId}
-            type="text"
-            value={value as string}
-            onChange={(e) => schema.handleFieldChange(field.name, e.target.value)}
-            className={inputClasses}
-            placeholder={
-              isTypeaheadField
-                ? "Type exact name: Resistor, Capacitor, Resonator, Resin..."
-                : undefined
-            }
-            autoComplete="off"
-          />
-          {/*
-            TODO: Typeahead functionality
-            When implemented, this will show a dropdown with matching mixin names.
-            For now, user must type the exact mixin name to trigger fields.
-          */}
-          {isTypeaheadField && value && (
-            <button
-              type="button"
-              onClick={() => schema.handleFieldChange(field.name, "")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              title="Clear"
-            >
-              ×
-            </button>
-          )}
-        </div>
+        <input
+          id={inputId}
+          type="text"
+          value={value as string}
+          onChange={(e) => schema.handleFieldChange(field.name, e.target.value)}
+          className={inputClasses}
+          autoComplete="off"
+        />
       </div>
     );
   };
