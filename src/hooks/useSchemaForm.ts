@@ -74,16 +74,25 @@ export function useSchemaForm(schemaName: string, rootMixins: string[]) {
     }
   }, [schemaName, rootMixins, fieldValues]);
 
-  // Initial load
-  useEffect(() => {
-    evaluate();
-  }, []);
+  // Track if this is the first evaluation (no debounce needed)
+  const isFirstEval = useRef(true);
 
-  // Re-evaluate when field values change (debounced)
+  // Single effect for both initial load and field value changes
   useEffect(() => {
-    const timer = setTimeout(evaluate, 100);
-    return () => clearTimeout(timer);
-  }, [fieldValues, evaluate]);
+    // Don't retry on error - user must call retry() to clear error and re-evaluate
+    if (error) return;
+
+    if (isFirstEval.current) {
+      // Initial load - evaluate immediately
+      isFirstEval.current = false;
+      evaluate();
+    } else {
+      // Subsequent changes - debounce
+      const timer = setTimeout(evaluate, 100);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fieldValues, schemaName]);
 
   // Sync fieldValues with availableFields:
   // 1. Archive removed field values to restoration cache
@@ -147,6 +156,18 @@ export function useSchemaForm(schemaName: string, rootMixins: string[]) {
   const reset = useCallback(() => {
     setFieldValues({});
     restorationCache.current = {};
+    setError(null);
+  }, []);
+
+  /**
+   * Retry after an error - clears error and re-evaluates
+   */
+  const retry = useCallback(() => {
+    setError(null);
+    // Trigger re-evaluation by resetting the first-eval flag
+    isFirstEval.current = true;
+    // Force a state update to trigger the effect
+    setFieldValues((prev) => ({ ...prev }));
   }, []);
 
   /**
@@ -173,6 +194,7 @@ export function useSchemaForm(schemaName: string, rootMixins: string[]) {
     // Actions
     handleFieldChange,
     reset,
+    retry,
 
     // Helpers
     getSubmitValues,
