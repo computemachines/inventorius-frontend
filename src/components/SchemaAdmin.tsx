@@ -2,7 +2,7 @@ import * as React from "react";
 import { useState, useEffect, useMemo, useContext } from "react";
 import { ApiContext } from "../api-client/api-client";
 import { SchemaField } from "../hooks/useSchemaForm";
-import { SchemaFieldList, labelClasses, inputClasses } from "./SchemaFields";
+import { SchemaFieldList, labelClasses } from "./SchemaFields";
 import FormSection from "./FormSection";
 
 /**
@@ -140,6 +140,18 @@ function FieldEditor({
   onChange: (f: SchemaField) => void;
   onDelete: () => void;
 }) {
+  const handleTypeChange = (newType: string) => {
+    const updates: Partial<SchemaField> = { type: newType };
+    // Initialize type-specific properties when switching types
+    if (newType === "enum" && !field.options) {
+      updates.options = [];
+    }
+    if (newType === "unit" && !field.unit) {
+      updates.unit = "";
+    }
+    onChange({ ...field, ...updates });
+  };
+
   return (
     <div className="flex gap-2 items-center py-2 px-3 bg-white rounded border border-[#cdd2d6] mb-1">
       <input
@@ -147,11 +159,11 @@ function FieldEditor({
         value={field.name}
         onChange={(e) => onChange({ ...field, name: e.target.value })}
         placeholder="field_name"
-        className={`${inputClasses} w-44 py-1.5 text-sm font-mono`}
+        className={`${adminInputClasses} w-44 py-1.5 text-sm font-mono`}
       />
       <select
         value={field.type}
-        onChange={(e) => onChange({ ...field, type: e.target.value as SchemaField["type"] })}
+        onChange={(e) => handleTypeChange(e.target.value)}
         className={`${selectClasses} w-24 py-1.5 text-xs`}
       >
         <option value="text">text</option>
@@ -168,7 +180,7 @@ function FieldEditor({
             onChange({ ...field, options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })
           }
           placeholder="opt1, opt2, opt3"
-          className={`${inputClasses} flex-1 py-1.5 text-xs`}
+          className={`${adminInputClasses} flex-1 min-w-0 py-1.5 text-xs`}
         />
       )}
       {field.type === "unit" && (
@@ -177,7 +189,7 @@ function FieldEditor({
           value={field.unit || ""}
           onChange={(e) => onChange({ ...field, unit: e.target.value })}
           placeholder="unit"
-          className={`${inputClasses} w-20 py-1.5 text-xs font-mono`}
+          className={`${adminInputClasses} w-20 py-1.5 text-xs font-mono`}
         />
       )}
       {(field.type !== "enum" && field.type !== "unit") && <div className="flex-1" />}
@@ -208,7 +220,7 @@ function TriggerEditor({
         value={trigger.field}
         onChange={(e) => onChange({ ...trigger, field: e.target.value })}
         placeholder="field"
-        className={`${inputClasses} w-28 py-1.5 text-sm font-mono`}
+        className={`${adminInputClasses} w-28 py-1.5 text-sm font-mono`}
       />
       <select
         value={trigger.op}
@@ -250,7 +262,7 @@ function TriggerEditor({
             onChange({ ...trigger, value: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })
           }
           placeholder="val1, val2"
-          className={`${inputClasses} w-36 py-1.5 text-sm`}
+          className={`${adminInputClasses} w-36 py-1.5 text-sm`}
         />
       ) : (
         <input
@@ -258,7 +270,7 @@ function TriggerEditor({
           value={(trigger.value as string) ?? ""}
           onChange={(e) => onChange({ ...trigger, value: e.target.value })}
           placeholder="value"
-          className={`${inputClasses} w-28 py-1.5 text-sm`}
+          className={`${adminInputClasses} w-28 py-1.5 text-sm`}
         />
       )}
     </span>
@@ -371,7 +383,7 @@ function MixinEditor({
               type="text"
               value={mixin.name}
               onChange={(e) => onChange({ ...mixin, name: e.target.value })}
-              className={`${inputClasses} w-48 font-semibold`}
+              className={`${adminInputClasses} w-48 font-semibold`}
             />
           </div>
 
