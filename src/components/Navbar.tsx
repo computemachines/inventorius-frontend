@@ -51,6 +51,14 @@ function Navbar({
       <NavLink className="navlink" to="/release">
         Release
       </NavLink>
+      <NavlinkDropdown text="Admin">
+        <NavLink className="navlink" to="/admin/schema">
+          Schema Admin
+        </NavLink>
+        <NavLink className="navlink" to="/demo/schema">
+          Schema Demo
+        </NavLink>
+      </NavlinkDropdown>
       <NavLink className="navlink" to="/search">
         Search
       </NavLink>
