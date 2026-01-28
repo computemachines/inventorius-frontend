@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useContext } from "react";
+import { useContext, useState, useEffect, useCallback } from "react";
 import { ApiContext } from "../api-client/api-client";
 import { AttributeBundle } from "../api-client/data-models";
 import { SchemaField } from "../hooks/useSchemaForm";
@@ -102,6 +102,155 @@ const UnitRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => (
   </div>
 );
 
+interface FileMetadata {
+  id: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  is_image: boolean;
+  thumbnail_url?: string;
+}
+
+const FileRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<FileMetadata | null>(null);
+
+  // Fetch metadata when value (file_id) changes
+  useEffect(() => {
+    if (value && typeof value === "string") {
+      fetch(`/api/files/${value}`, { method: "HEAD" })
+        .then((r) => {
+          if (r.ok) {
+            // File exists, create preview info from the value
+            // We don't have full metadata, but we can at least show the ID
+            setPreview({
+              id: value as string,
+              filename: "Uploaded file",
+              content_type: "",
+              size: 0,
+              is_image: true, // Assume image for thumbnail attempt
+              thumbnail_url: `/api/files/${value}/thumb`,
+            });
+          }
+        })
+        .catch(() => {
+          // File doesn't exist or error
+          setPreview(null);
+        });
+    } else {
+      setPreview(null);
+    }
+  }, [value]);
+
+  const handleFileSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      setUploading(true);
+      setError(null);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const response = await fetch("/api/files", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(
+            errData["invalid-params"]?.[0]?.reason || "Upload failed"
+          );
+        }
+
+        const data = await response.json();
+        const fileState = data.state as FileMetadata;
+
+        onChange(fileState.id);
+        setPreview(fileState);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Upload failed");
+      } finally {
+        setUploading(false);
+      }
+    },
+    [onChange]
+  );
+
+  const handleRemove = useCallback(() => {
+    onChange("");
+    setPreview(null);
+    setError(null);
+  }, [onChange]);
+
+  // Accept attribute from field.options (MIME types)
+  const accept = field.options?.join(",") || "image/*,application/pdf";
+
+  return (
+    <div className="space-y-2">
+      {/* Preview */}
+      {preview && (
+        <div className="flex items-center gap-3 p-2 bg-[#f5f4f0] rounded border border-[#cdd2d6]">
+          {preview.is_image && preview.thumbnail_url && (
+            <img
+              src={preview.thumbnail_url}
+              alt="Preview"
+              className="w-16 h-16 object-cover rounded"
+              onError={(e) => {
+                // Hide broken image
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
+            />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-[#04151f] truncate">
+              {preview.filename}
+            </div>
+            {preview.size > 0 && (
+              <div className="text-xs text-[#6d635d]">
+                {(preview.size / 1024).toFixed(1)} KB
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleRemove}
+            className="text-[#9e2a2a] hover:text-[#7a1f1f] text-sm font-medium"
+          >
+            Remove
+          </button>
+        </div>
+      )}
+
+      {/* Upload input */}
+      {!preview && (
+        <div className="relative">
+          <input
+            id={inputId}
+            type="file"
+            accept={accept}
+            onChange={handleFileSelect}
+            disabled={uploading}
+            className="block w-full text-sm text-[#04151f] file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-[#0c3764] file:text-white hover:file:bg-[#082441] disabled:opacity-50"
+          />
+          {uploading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+              <span className="text-sm text-[#6d635d]">Uploading...</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Error message */}
+      {error && <div className="text-sm text-[#9e2a2a]">{error}</div>}
+    </div>
+  );
+};
+
 /** Registry mapping field types to their renderers */
 const fieldRenderers: Record<string, FieldRenderer> = {
   text: TextRenderer,
@@ -109,6 +258,7 @@ const fieldRenderers: Record<string, FieldRenderer> = {
   bool: BoolRenderer,
   enum: EnumRenderer,
   unit: UnitRenderer,
+  file: FileRenderer,
 };
 
 /** Get renderer for a field type, defaulting to text */
