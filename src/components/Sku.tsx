@@ -16,6 +16,7 @@ import { stringifyUrl } from "query-string";
 import PropertiesTable, {
   api_props_from_properties,
   Property,
+  isUuidString,
 } from "./PropertiesTable";
 import FormSection from "./FormSection";
 import { labelClasses, inputClasses } from "./SchemaFields";
@@ -81,7 +82,12 @@ function Sku({ editable = false }: { editable?: boolean }) {
           if (typeof value == "number") {
             typed = { kind: "number", value: value };
           } else if (typeof value == "string") {
-            typed = { kind: "string", value: value };
+            // Check if this looks like a file ID (UUID)
+            if (isUuidString(value)) {
+              typed = { kind: "file", value: value };
+            } else {
+              typed = { kind: "string", value: value };
+            }
           } else if (typeof value == "object") {
             if ("unit" in value && "value" in value) {
               const physical = new Unit1(
