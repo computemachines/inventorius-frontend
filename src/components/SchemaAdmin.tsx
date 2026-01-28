@@ -171,6 +171,7 @@ function FieldEditor({
         <option value="enum">enum</option>
         <option value="bool">bool</option>
         <option value="unit">unit</option>
+        <option value="file">file</option>
       </select>
       {field.type === "enum" && (
         <input
