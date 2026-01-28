@@ -5,7 +5,6 @@ import { ApiContext, FrontloadContext } from "../api-client/api-client";
 import { Sku as ApiSku, Unit1 } from "../api-client/data-models";
 import ReactModal from "react-modal";
 
-import "../styles/infoPanel.css";
 import CodesInput, { Code } from "./CodesInput";
 import { FourOhFour } from "./FourOhFour";
 import ItemLabel from "./ItemLabel";
@@ -18,6 +17,8 @@ import PropertiesTable, {
   api_props_from_properties,
   Property,
 } from "./PropertiesTable";
+import FormSection from "./FormSection";
+import { labelClasses, inputClasses } from "./SchemaFields";
 
 function Sku({ editable = false }: { editable?: boolean }) {
   const { id } = useParams<{ id: string }>();
@@ -122,222 +123,235 @@ function Sku({ editable = false }: { editable?: boolean }) {
   }
 
   return (
-    <div className="info-panel">
-      {/* TODO: Add useBlocker for unsaved changes warning (requires data router) */}
+    <div className="max-w-[40rem] mx-auto">
+      {/* Delete confirmation modal */}
       <ReactModal
         isOpen={showModal}
         onRequestClose={() => setShowModal(false)}
-        className="warn-modal"
+        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-6 rounded-lg shadow-xl max-w-md w-full"
+        overlayClassName="fixed inset-0 bg-black/50"
       >
-        <button className="modal-close" onClick={() => setShowModal(false)}>
-          X
-        </button>
-        <h3>Are you sure?</h3>
-        <button onClick={() => setShowModal(false)}>Cancel</button>
         <button
-          onClick={async () => {
-            if (data.sku.kind == "problem") throw "impossible";
-            const resp = await api.hydrate(data.sku).delete();
-            // setShowModal(false); // this doesn't seem to be necessary?
-            if (resp.kind == "status") {
-              setAlertContent({ content: <p>Deleted</p>, mode: "success" });
-              const updatedSku = await api.getSku(id);
-              const updatedSkuBins =
-                updatedSku.kind == "sku" ? await updatedSku.bins() : updatedSku;
-              const updatedSkuBatches =
-                updatedSku.kind == "sku" ? await updatedSku.batches() : updatedSku;
-              setData(() => ({ sku: updatedSku, skuBins: updatedSkuBins, skuBatches: updatedSkuBatches }));
-            } else {
-              setAlertContent({
-                content: <p>{resp.title}</p>,
-                mode: "failure",
-              });
-            }
-          }}
-          className="button-danger"
+          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600"
+          onClick={() => setShowModal(false)}
         >
-          Delete
+          ✕
         </button>
-      </ReactModal>
-      <div className="info-item">
-        <div className="info-item-title">Sku Label</div>
-        <div className="info-item-description">
-          <ItemLabel link={false} label={id} />
-          <PrintButton value={id} />
-        </div>
-      </div>
-
-      <div className="info-item">
-        <div className="info-item-title">Name</div>
-        <div className="info-item-description">
-          {editable ? (
-            <input
-              className="item-description-oneline"
-              value={unsavedName}
-              onChange={(e) => {
-                setSaveState("unsaved");
-                setUnsavedName(e.target.value);
-              }}
-            />
-          ) : (
-            <div className="item-description-oneline">{unsavedName}</div>
-          )}
-        </div>
-      </div>
-      <div className="info-item">
-        <div className="info-item-title">Derived Batches</div>
-        <div className="info-item-description">
-          {data.skuBatches.kind == "sku-batches" ? (
-            data.skuBatches.state.length > 0 ? (
-              <ul style={{ margin: 0, paddingLeft: "1.2em" }}>
-                {data.skuBatches.state.map((batchId) => (
-                  <li key={batchId}>
-                    <ItemLabel link={true} label={batchId} />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              "None"
-            )
-          ) : (
-            "Problem loading batches."
-          )}
-        </div>
-      </div>
-      <div className="info-item">
-        <div className="info-item-title">Locations</div>
-        <div className="info-item-description">
-          {data.skuBins.kind == "sku-locations" ? (
-            <ItemLocations itemLocations={data.skuBins} />
-          ) : (
-            "Problem loading locations."
-          )}
-        </div>
-      </div>
-      <div className="info-item">
-        <div className="info-item-title">Codes</div>
-        <div className="info-item-description">
-          {isCodesEmpty(unsavedCodes) && !editable ? (
-            "None"
-          ) : (
-            <CodesInput
-              codes={unsavedCodes}
-              setCodes={(codes) => {
-                setSaveState("unsaved");
-                setUnsavedCodes(codes);
-              }}
-              editable={editable}
-            />
-          )}
-        </div>
-      </div>
-      <div className="info-item">
-        <div className="info-item-title">Properties</div>
-        <div className="info-item-description">
-          {unsavedProperties.length == 0 && !editable ? (
-            "None"
-          ) : (
-            <PropertiesTable
-              editable={editable}
-              properties={unsavedProperties}
-              setProperties={(properties) => {
-                setSaveState("unsaved");
-                setUnsavedProperties(properties);
-              }}
-            />
-          )}
-        </div>
-      </div>
-      {editable ? (
-        <div className="edit-controls">
+        <h3 className="text-lg font-bold text-[#04151f] mb-4">Are you sure?</h3>
+        <p className="text-[#6d635d] mb-6">This action cannot be undone.</p>
+        <div className="flex gap-3 justify-end">
           <button
-            className="edit-controls-cancel-button"
-            onClick={(e) => {
-              navigate(generatePath("/sku/:id", { id }));
-            }}
+            onClick={() => setShowModal(false)}
+            className="py-2 px-4 text-sm font-medium bg-transparent text-[#6d635d] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors cursor-pointer"
           >
             Cancel
           </button>
           <button
-            className="edit-controls-save-button"
             onClick={async () => {
-              if (data.sku.kind == "problem") throw Error("impossible");
-              setSaveState("saving");
-              const resp = await api.hydrate(data.sku).update({
-                name: unsavedName,
-                owned_codes: unsavedCodes
-                  .filter(({ kind, value }) => kind == "owned" && value)
-                  .map(({ value }) => value),
-                associated_codes: unsavedCodes
-                  .filter(({ kind, value }) => kind == "associated" && value)
-                  .map(({ value }) => value),
-                props: api_props_from_properties(unsavedProperties),
-              });
-
-              if (resp.kind == "problem") {
-                setSaveState("unsaved");
+              if (data.sku.kind == "problem") throw "impossible";
+              const resp = await api.hydrate(data.sku).delete();
+              if (resp.kind == "status") {
+                setAlertContent({ content: <p>Deleted</p>, mode: "success" });
+                const updatedSku = await api.getSku(id);
+                const updatedSkuBins =
+                  updatedSku.kind == "sku" ? await updatedSku.bins() : updatedSku;
+                const updatedSkuBatches =
+                  updatedSku.kind == "sku" ? await updatedSku.batches() : updatedSku;
+                setData(() => ({ sku: updatedSku, skuBins: updatedSkuBins, skuBatches: updatedSkuBatches }));
+              } else {
                 setAlertContent({
                   content: <p>{resp.title}</p>,
                   mode: "failure",
                 });
-              } else {
-                setSaveState("live");
-                setAlertContent({
-                  content: <div>{resp.status}</div>,
-                  mode: "success",
-                });
-
-                const updatedSku = await api.getSku(id);
-
-                setData(({ skuBins, skuBatches }) => ({
-                  sku: updatedSku,
-                  skuBins,
-                  skuBatches,
-                }));
-
-                navigate(generatePath("/sku/:id", { id }));
               }
             }}
-            disabled={saveState == "saving"}
+            className="py-2 px-4 text-sm font-semibold bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors cursor-pointer"
           >
-            {saveState == "saving" ? "Saving..." : "Save"}
+            Delete
           </button>
         </div>
+      </ReactModal>
+
+      {/* Page Header */}
+      <h2 className="text-2xl font-bold text-[#04151f] mb-6 pb-3 border-b-2 border-[#cdd2d6]">
+        {editable ? "Edit SKU" : "SKU Details"}
+      </h2>
+
+      {/* SKU Label */}
+      <label className={labelClasses}>SKU Label</label>
+      <div className="flex items-center gap-2 mb-6">
+        <span className="text-xl font-mono">
+          <ItemLabel link={false} label={id} />
+        </span>
+        <PrintButton value={id} />
+      </div>
+
+      {/* Name */}
+      <label htmlFor="sku-name" className={labelClasses}>Name</label>
+      {editable ? (
+        <input
+          id="sku-name"
+          type="text"
+          className={inputClasses + " mb-6"}
+          value={unsavedName}
+          onChange={(e) => {
+            setSaveState("unsaved");
+            setUnsavedName(e.target.value);
+          }}
+        />
       ) : (
-        <div className="info-item">
-          <div className="info-item-title">Actions</div>
-          <div className="info-item-description" style={{ display: "block" }}>
+        <div className="text-[#04151f] mb-6">
+          {unsavedName || <span className="italic text-[#6d635d]">(No name)</span>}
+        </div>
+      )}
+
+      {/* Derived Batches */}
+      <FormSection title="Derived Batches" accent="blue" withSeparator={true}>
+        {data.skuBatches.kind == "sku-batches" ? (
+          data.skuBatches.state.length > 0 ? (
+            <ul className="list-disc list-inside space-y-1">
+              {data.skuBatches.state.map((batchId) => (
+                <li key={batchId}>
+                  <ItemLabel link={true} label={batchId} />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="text-[#6d635d] italic">None</span>
+          )
+        ) : (
+          <span className="text-red-600">Problem loading batches.</span>
+        )}
+      </FormSection>
+
+      {/* Locations */}
+      <FormSection title="Locations" accent="blue">
+        {data.skuBins.kind == "sku-locations" ? (
+          <ItemLocations itemLocations={data.skuBins} />
+        ) : (
+          <span className="text-red-600">Problem loading locations.</span>
+        )}
+      </FormSection>
+
+      {/* Codes */}
+      <FormSection title="Codes" accent="amber">
+        {isCodesEmpty(unsavedCodes) && !editable ? (
+          <span className="text-[#6d635d] italic">None</span>
+        ) : (
+          <CodesInput
+            codes={unsavedCodes}
+            setCodes={(codes) => {
+              setSaveState("unsaved");
+              setUnsavedCodes(codes);
+            }}
+            editable={editable}
+          />
+        )}
+      </FormSection>
+
+      {/* Properties */}
+      <FormSection title="Properties" accent="amber">
+        {unsavedProperties.length == 0 && !editable ? (
+          <span className="text-[#6d635d] italic">None</span>
+        ) : (
+          <PropertiesTable
+            editable={editable}
+            properties={unsavedProperties}
+            setProperties={(properties) => {
+              setSaveState("unsaved");
+              setUnsavedProperties(properties);
+            }}
+          />
+        )}
+      </FormSection>
+
+      {/* Actions */}
+      <div className="flex gap-3 mt-8 pt-6 border-t border-[#cdd2d6]">
+        {editable ? (
+          <>
+            <button
+              type="button"
+              onClick={async () => {
+                if (data.sku.kind == "problem") throw Error("impossible");
+                setSaveState("saving");
+                const resp = await api.hydrate(data.sku).update({
+                  name: unsavedName,
+                  owned_codes: unsavedCodes
+                    .filter(({ kind, value }) => kind == "owned" && value)
+                    .map(({ value }) => value),
+                  associated_codes: unsavedCodes
+                    .filter(({ kind, value }) => kind == "associated" && value)
+                    .map(({ value }) => value),
+                  props: api_props_from_properties(unsavedProperties),
+                });
+
+                if (resp.kind == "problem") {
+                  setSaveState("unsaved");
+                  setAlertContent({
+                    content: <p>{resp.title}</p>,
+                    mode: "failure",
+                  });
+                } else {
+                  setSaveState("live");
+                  setAlertContent({
+                    content: <div>{resp.status}</div>,
+                    mode: "success",
+                  });
+
+                  const updatedSku = await api.getSku(id);
+
+                  setData(({ skuBins, skuBatches }) => ({
+                    sku: updatedSku,
+                    skuBins,
+                    skuBatches,
+                  }));
+
+                  navigate(generatePath("/sku/:id", { id }));
+                }
+              }}
+              disabled={saveState == "saving"}
+              className="flex-1 py-3 px-6 text-base font-semibold bg-[#26532b] text-white rounded-md hover:bg-[#1e4423] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
+            >
+              {saveState == "saving" ? "Saving..." : "Save Changes"}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(generatePath("/sku/:id", { id }))}
+              className="py-3 px-5 text-base font-medium bg-transparent text-[#6d635d] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] hover:text-[#04151f] transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
             <Link
               to={generatePath("/sku/:id/edit", { id })}
-              className="action-link"
+              className="py-3 px-5 text-base font-semibold bg-[#0c3764] text-white rounded-md hover:bg-[#082441] transition-colors text-center"
             >
               Edit
             </Link>
             <Link
               to={stringifyUrl({ url: "/receive", query: { item: id } })}
-              className="action-link"
+              className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
             >
               Receive
             </Link>
             <Link
-              to={stringifyUrl({
-                url: "/release",
-                query: { item: id },
-              })}
-              className="action-link"
+              to={stringifyUrl({ url: "/release", query: { item: id } })}
+              className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
             >
               Release
             </Link>
-            <Link
-              to="#"
-              className="action-link"
+            <button
+              type="button"
               onClick={() => setShowModal(true)}
+              className="py-3 px-5 text-base font-medium bg-transparent text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
             >
-              Delete?
-            </Link>
-          </div>
-        </div>
-      )}
+              Delete
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

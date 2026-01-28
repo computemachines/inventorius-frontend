@@ -9,9 +9,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { ApiContext, FrontloadContext } from "../api-client/api-client";
-// import { Problem, Sku as ApiSku } from "../api-client/data-models";
 
-import "../styles/infoPanel.css";
 import { ToastContext } from "./Toast";
 import CodesInput, { Code } from "./CodesInput";
 import { FourOhFour } from "./FourOhFour";
@@ -25,6 +23,8 @@ import PropertiesTable, {
   Property,
 } from "./PropertiesTable";
 import WarnModal from "./WarnModal";
+import FormSection from "./FormSection";
+import { labelClasses, inputClasses } from "./SchemaFields";
 
 function Batch({ editable = false }: { editable?: boolean }) {
   const navigate = useNavigate();
@@ -178,17 +178,16 @@ function Batch({ editable = false }: { editable?: boolean }) {
   }
 
   return (
-    <div className="info-panel">
-      {/* TODO: Add useBlocker for unsaved changes warning (requires data router) */}
+    <div className="max-w-[40rem] mx-auto">
+      {/* Delete confirmation modal */}
       <WarnModal
         showModal={showModal}
         setShowModal={setShowModal}
         dangerousActionName="Delete"
         onContinue={async () => {
-          if (1 == 1) return;
+          if (1 == 1) return; // TODO: Enable delete functionality
           if (data.batch.kind == "problem") throw "impossible";
           const resp = await api.hydrate(data.batch).delete();
-          // setShowModal(false); // this doesn't seem to be necessary?
           if (resp.kind == "status") {
             setToastContent({ content: <p>Deleted</p>, mode: "success" });
             const updatedBatch = await api.getBatch(batch_id);
@@ -210,185 +209,191 @@ function Batch({ editable = false }: { editable?: boolean }) {
             });
           }
         }}
-      ></WarnModal>
-      <div className="info-panel__item">
-        <div className="info-panel__item-title">Parent Sku</div>
-        <div className="info-panel__item-description">
-          {parentSkuShowItemDesc}
-        </div>
-      </div>
-      <div className="info-panel__item">
-        <div className="info-panel__item-title">Batch Label</div>
-        <div className="info-panel__item-description">
-          <ItemLabel link={false} label={batch_id} />
-          <PrintButton value={batch_id} />
-        </div>
-      </div>
-      <div className="info-panel__item">
-        <div className="info-panel__item-title">Name</div>
-        <div className="info-panel__item-description">
-          {editable ? (
-            <input
-              type="text"
-              id="parent_sku_id"
-              name="parent_sku_id"
-              className="form-single-code-input"
-              value={unsavedName}
-              onChange={(e) => setUnsavedName(e.target.value)}
-            />
-          ) : (
-            unsavedName || <div style={{ fontStyle: "italic" }}>(Empty)</div>
-          )}
-        </div>
-      </div>
-      <div className="info-panel__item">
-        <div className="info-panel__item-title">Locations</div>
-        <div className="info-panel__item-description">{itemLocations}</div>
-      </div>
-      <div className="info-panel__item">
-        <div className="info-panel__item-title">Codes</div>
-        <div className="info-panel__item-description">
-          {unsavedCodes.length == 0 && !editable ? (
-            "None"
-          ) : (
-            <CodesInput
-              codes={unsavedCodes}
-              setCodes={(codes) => {
-                setSaveState("unsaved");
-                setUnsavedCodes(codes);
-              }}
-              editable={editable}
-            />
-          )}
-        </div>
-      </div>
-      <div className="info-panel__item">
-        <div className="info-panel__item-title">Additional Properties</div>
-        <div className="info-panel__item-description">
-          {unsavedProperties.length == 0 && !editable ? (
-            "None"
-          ) : (
-            <PropertiesTable
-              editable={editable}
-              properties={unsavedProperties}
-              setProperties={(properties) => {
-                setSaveState("unsaved");
-                setUnsavedProperties(properties);
-              }}
-            />
-          )}
-        </div>
-      </div>
-      <div className="info-panel__item">
-        <div className="info-panel__item-title">Actions</div>
-        <div
-          className="info-panel__item-description"
-          style={{ display: "block" }}
-        >
-          {editable ? (
-            <div className="edit-controls">
-              <button
-                className="edit-controls-cancel-button"
-                onClick={(e) => {
-                  navigate(generatePath("/batch/:id", { id: batch_id }));
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="edit-controls-save-button"
-                onClick={async () => {
-                  if (data.batch.kind == "problem") throw "impossible";
-                  setSaveState("saving");
-                  console.log(unsavedCodes);
-                  const resp = await api.hydrate(data.batch).update({
-                    sku_id: unsavedParentSkuId || null,
-                    id: batch_id,
-                    name: unsavedName,
-                    owned_codes: unsavedCodes
-                      .filter(({ kind, value }) => kind == "owned" && value)
-                      .map(({ value }) => value),
-                    associated_codes: unsavedCodes
-                      .filter(
-                        ({ kind, value }) => kind == "associated" && value
-                      )
-                      .map(({ value }) => value),
-                    props: api_props_from_properties(unsavedProperties),
-                  });
+      />
 
-                  if (resp.kind == "problem") {
-                    Sentry.captureException(
-                      new Error("error saving batch edit")
-                    );
-                    setSaveState("unsaved");
-                    setToastContent({
-                      content: <p>{resp.title}</p>,
-                      mode: "failure",
-                    });
-                  } else {
-                    setSaveState("live");
-                    setToastContent({
-                      content: <div>Saved!</div>,
-                      mode: "success",
-                    });
-                    const updatedBatch = await api.getBatch(batch_id);
-                    const updatedParentSku =
-                      updatedBatch.kind == "batch" && updatedBatch.state.sku_id
-                        ? await api.getSku(updatedBatch.state.sku_id)
-                        : null;
-                    const updatedBatchBins =
-                      updatedBatch.kind == "batch"
-                        ? await updatedBatch.bins()
-                        : null;
-                    setData((old) => ({
-                      ...old,
-                      batch: updatedBatch,
-                      parentSku: updatedParentSku,
-                      batchBins: updatedBatchBins,
-                    }));
-                    navigate(generatePath("/batch/:id", { id: batch_id }));
-                  }
-                }}
-              >
-                {saveState == "saving" ? "Saving..." : "Save"}
-              </button>
-            </div>
-          ) : (
-            <>
-              <Link
-                to={generatePath("/batch/:id/edit", { id: batch_id })}
-                className="action-link"
-              >
-                Edit
-              </Link>
-              <Link
-                to={stringifyUrl({
-                  url: "/receive",
-                  query: { item: batch_id },
-                })}
-                className="action-link"
-              >
-                Receive
-              </Link>
-              <Link
-                to={stringifyUrl({
-                  url: "/release",
-                  query: { item: batch_id },
-                })}
-                className="action-link"
-              >
-                Release
-              </Link>
-              <Link
-                to="#"
-                className="action-link"
-                onClick={() => setShowModal(true)}
-              >
-                Delete?
-              </Link>
-            </>
-          )}
+      {/* Page Header */}
+      <h2 className="text-2xl font-bold text-[#04151f] mb-6 pb-3 border-b-2 border-[#cdd2d6]">
+        {editable ? "Edit Batch" : "Batch Details"}
+      </h2>
+
+      {/* Parent SKU */}
+      <label htmlFor="parent-sku" className={labelClasses}>Parent SKU</label>
+      {editable ? (
+        <input
+          id="parent-sku"
+          type="text"
+          className={inputClasses + " mb-6"}
+          value={unsavedParentSkuId}
+          onChange={(e) => {
+            setSaveState("unsaved");
+            setUnsavedParentSkuId(e.target.value);
+          }}
+          placeholder="Enter SKU ID..."
+        />
+      ) : (
+        <div className="text-[#04151f] mb-6">{parentSkuShowItemDesc}</div>
+      )}
+
+      {/* Batch Label */}
+      <label className={labelClasses}>Batch Label</label>
+      <div className="flex items-center gap-2 mb-6">
+        <span className="text-xl font-mono">
+          <ItemLabel link={false} label={batch_id} />
+        </span>
+        <PrintButton value={batch_id} />
+      </div>
+
+      {/* Name */}
+      <label htmlFor="batch-name" className={labelClasses}>Name</label>
+      {editable ? (
+        <input
+          id="batch-name"
+          type="text"
+          className={inputClasses + " mb-6"}
+          value={unsavedName}
+          onChange={(e) => {
+            setSaveState("unsaved");
+            setUnsavedName(e.target.value);
+          }}
+        />
+      ) : (
+        <div className="text-[#04151f] mb-6">
+          {unsavedName || <span className="italic text-[#6d635d]">(No name)</span>}
         </div>
+      )}
+
+      {/* Locations */}
+      <FormSection title="Locations" accent="blue" withSeparator={true}>
+        {itemLocations}
+      </FormSection>
+
+      {/* Codes */}
+      <FormSection title="Codes" accent="amber">
+        {unsavedCodes.length == 0 && !editable ? (
+          <span className="text-[#6d635d] italic">None</span>
+        ) : (
+          <CodesInput
+            codes={unsavedCodes}
+            setCodes={(codes) => {
+              setSaveState("unsaved");
+              setUnsavedCodes(codes);
+            }}
+            editable={editable}
+          />
+        )}
+      </FormSection>
+
+      {/* Properties */}
+      <FormSection title="Additional Properties" accent="amber">
+        {unsavedProperties.length == 0 && !editable ? (
+          <span className="text-[#6d635d] italic">None</span>
+        ) : (
+          <PropertiesTable
+            editable={editable}
+            properties={unsavedProperties}
+            setProperties={(properties) => {
+              setSaveState("unsaved");
+              setUnsavedProperties(properties);
+            }}
+          />
+        )}
+      </FormSection>
+
+      {/* Actions */}
+      <div className="flex gap-3 mt-8 pt-6 border-t border-[#cdd2d6]">
+        {editable ? (
+          <>
+            <button
+              type="button"
+              onClick={async () => {
+                if (data.batch.kind == "problem") throw "impossible";
+                setSaveState("saving");
+                const resp = await api.hydrate(data.batch).update({
+                  sku_id: unsavedParentSkuId || null,
+                  id: batch_id,
+                  name: unsavedName,
+                  owned_codes: unsavedCodes
+                    .filter(({ kind, value }) => kind == "owned" && value)
+                    .map(({ value }) => value),
+                  associated_codes: unsavedCodes
+                    .filter(({ kind, value }) => kind == "associated" && value)
+                    .map(({ value }) => value),
+                  props: api_props_from_properties(unsavedProperties),
+                });
+
+                if (resp.kind == "problem") {
+                  Sentry.captureException(new Error("error saving batch edit"));
+                  setSaveState("unsaved");
+                  setToastContent({
+                    content: <p>{resp.title}</p>,
+                    mode: "failure",
+                  });
+                } else {
+                  setSaveState("live");
+                  setToastContent({
+                    content: <div>Saved!</div>,
+                    mode: "success",
+                  });
+                  const updatedBatch = await api.getBatch(batch_id);
+                  const updatedParentSku =
+                    updatedBatch.kind == "batch" && updatedBatch.state.sku_id
+                      ? await api.getSku(updatedBatch.state.sku_id)
+                      : null;
+                  const updatedBatchBins =
+                    updatedBatch.kind == "batch"
+                      ? await updatedBatch.bins()
+                      : null;
+                  setData((old) => ({
+                    ...old,
+                    batch: updatedBatch,
+                    parentSku: updatedParentSku,
+                    batchBins: updatedBatchBins,
+                  }));
+                  navigate(generatePath("/batch/:id", { id: batch_id }));
+                }
+              }}
+              disabled={saveState == "saving"}
+              className="flex-1 py-3 px-6 text-base font-semibold bg-[#26532b] text-white rounded-md hover:bg-[#1e4423] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
+            >
+              {saveState == "saving" ? "Saving..." : "Save Changes"}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(generatePath("/batch/:id", { id: batch_id }))}
+              className="py-3 px-5 text-base font-medium bg-transparent text-[#6d635d] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] hover:text-[#04151f] transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <Link
+              to={generatePath("/batch/:id/edit", { id: batch_id })}
+              className="py-3 px-5 text-base font-semibold bg-[#0c3764] text-white rounded-md hover:bg-[#082441] transition-colors text-center"
+            >
+              Edit
+            </Link>
+            <Link
+              to={stringifyUrl({ url: "/receive", query: { item: batch_id } })}
+              className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
+            >
+              Receive
+            </Link>
+            <Link
+              to={stringifyUrl({ url: "/release", query: { item: batch_id } })}
+              className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
+            >
+              Release
+            </Link>
+            <button
+              type="button"
+              onClick={() => setShowModal(true)}
+              className="py-3 px-5 text-base font-medium bg-transparent text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
+            >
+              Delete
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
