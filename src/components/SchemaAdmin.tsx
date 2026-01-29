@@ -27,6 +27,46 @@ const btnSecondary = "py-2 px-4 text-sm font-medium bg-white text-[#04151f] bord
 const btnSaveLight = "py-1.5 px-3 text-xs font-semibold bg-emerald-700 text-white rounded hover:bg-emerald-600 transition-colors";
 const btnDeleteLight = "py-1.5 px-3 text-xs font-semibold bg-red-800 text-white rounded hover:bg-red-700 transition-colors";
 
+/**
+ * Enum options input that allows typing freely and only parses on blur.
+ * Fixes issue where immediate parsing prevented typing spaces/commas.
+ */
+function EnumOptionsInput({
+  options,
+  onChange,
+  className,
+}: {
+  options: string[] | undefined;
+  onChange: (options: string[]) => void;
+  className?: string;
+}) {
+  const [localValue, setLocalValue] = useState(options?.join(", ") || "");
+
+  // Sync local value when options change from outside (e.g., loading)
+  useEffect(() => {
+    setLocalValue(options?.join(", ") || "");
+  }, [options?.join(", ")]);
+
+  const handleBlur = () => {
+    const parsed = localValue
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    onChange(parsed);
+  };
+
+  return (
+    <input
+      type="text"
+      value={localValue}
+      onChange={(e) => setLocalValue(e.target.value)}
+      onBlur={handleBlur}
+      placeholder="opt1, opt2, opt3"
+      className={className}
+    />
+  );
+}
+
 // Types that mirror the API exactly (SchemaField is imported from useSchemaForm)
 
 interface TriggerCondition {
@@ -174,13 +214,9 @@ function FieldEditor({
         <option value="file">file</option>
       </select>
       {field.type === "enum" && (
-        <input
-          type="text"
-          value={field.options?.join(", ") || ""}
-          onChange={(e) =>
-            onChange({ ...field, options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })
-          }
-          placeholder="opt1, opt2, opt3"
+        <EnumOptionsInput
+          options={field.options}
+          onChange={(options) => onChange({ ...field, options })}
           className={`${adminInputClasses} flex-1 min-w-0 py-1.5 text-xs`}
         />
       )}
@@ -256,13 +292,9 @@ function TriggerEditor({
           <option value="false">false</option>
         </select>
       ) : valueIsArray ? (
-        <input
-          type="text"
-          value={Array.isArray(trigger.value) ? (trigger.value as string[]).join(", ") : ""}
-          onChange={(e) =>
-            onChange({ ...trigger, value: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })
-          }
-          placeholder="val1, val2"
+        <EnumOptionsInput
+          options={Array.isArray(trigger.value) ? (trigger.value as string[]) : []}
+          onChange={(options) => onChange({ ...trigger, value: options })}
           className={`${adminInputClasses} w-36 py-1.5 text-sm`}
         />
       ) : (

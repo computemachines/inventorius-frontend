@@ -185,7 +185,7 @@ function Sku({ editable = false }: { editable?: boolean }) {
 
       {/* SKU Label */}
       <label className={labelClasses}>SKU Label</label>
-      <div className="flex items-center gap-2 mb-6">
+      <div className="flex items-center gap-2 mb-6 justify-between">
         <span className="text-xl font-mono">
           <ItemLabel link={false} label={id} />
         </span>
@@ -211,6 +211,32 @@ function Sku({ editable = false }: { editable?: boolean }) {
         </div>
       )}
 
+
+      {/* Locations */}
+      <FormSection title="Locations" accent="blue">
+        {data.skuBins.kind == "sku-locations" ? (
+          <ItemLocations itemLocations={data.skuBins} />
+        ) : (
+          <span className="text-red-600">Problem loading locations.</span>
+        )}
+      </FormSection>
+
+      {/* Properties */}
+      <FormSection title="Properties" accent="amber">
+        {unsavedProperties.length == 0 && !editable ? (
+          <span className="text-[#6d635d] italic">None</span>
+        ) : (
+          <PropertiesTable
+            editable={editable}
+            properties={unsavedProperties}
+            setProperties={(properties) => {
+              setSaveState("unsaved");
+              setUnsavedProperties(properties);
+            }}
+          />
+        )}
+      </FormSection>
+
       {/* Derived Batches */}
       <FormSection title="Derived Batches" accent="blue" withSeparator={true}>
         {data.skuBatches.kind == "sku-batches" ? (
@@ -230,14 +256,6 @@ function Sku({ editable = false }: { editable?: boolean }) {
         )}
       </FormSection>
 
-      {/* Locations */}
-      <FormSection title="Locations" accent="blue">
-        {data.skuBins.kind == "sku-locations" ? (
-          <ItemLocations itemLocations={data.skuBins} />
-        ) : (
-          <span className="text-red-600">Problem loading locations.</span>
-        )}
-      </FormSection>
 
       {/* Codes */}
       <FormSection title="Codes" accent="amber">
@@ -255,21 +273,6 @@ function Sku({ editable = false }: { editable?: boolean }) {
         )}
       </FormSection>
 
-      {/* Properties */}
-      <FormSection title="Properties" accent="amber">
-        {unsavedProperties.length == 0 && !editable ? (
-          <span className="text-[#6d635d] italic">None</span>
-        ) : (
-          <PropertiesTable
-            editable={editable}
-            properties={unsavedProperties}
-            setProperties={(properties) => {
-              setSaveState("unsaved");
-              setUnsavedProperties(properties);
-            }}
-          />
-        )}
-      </FormSection>
 
       {/* Actions */}
       <div className="flex gap-3 mt-8 pt-6 border-t border-[#cdd2d6]">
