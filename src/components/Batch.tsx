@@ -115,8 +115,12 @@ function Batch({ editable = false }: { editable?: boolean }) {
                   break;
 
                 default:
-                  throw new Error("Unsupported api unit type");
+                  // Unknown unit type - stringify it
+                  typed = { kind: "string", value: JSON.stringify(value) };
               }
+            } else {
+              // Generic object - stringify it
+              typed = { kind: "string", value: JSON.stringify(value) };
             }
           } else {
             throw new Error("Unsupported api type");
