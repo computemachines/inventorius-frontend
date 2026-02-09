@@ -7,7 +7,7 @@ import {
   createFrontloadState,
   FrontloadProvider,
   frontloadServerRender,
-  FrontloadState,
+  type FrontloadState,
 } from "react-frontload";
 import { StaticRouter } from "react-router-dom";
 import * as path from "path";
@@ -18,6 +18,10 @@ import * as Sentry from "@sentry/node";
 import App from "../components/App";
 import { ApiClient } from "../api-client/api-client";
 import { version } from "os";
+import {
+  ServerStatusContext,
+  type ServerStatus,
+} from "../components/primitives/ServerStatusContext";
 
 const API_HOSTNAME = process.env.API_HOSTNAME || "http://localhost:8000";
 
@@ -116,23 +120,27 @@ app.get("/*", cors(), async function (req, res) {
     logging: dev,
   });
 
+  let statusState: ServerStatus = {
+    statusCode: 200,
+  };
+
   try {
-    // NOTE: In react-router v6+, StaticRouter no longer has context prop.
-    // Redirect/status code handling would require data router (createStaticHandler).
     const { rendered, data } = await frontloadServerRender({
       frontloadState,
       render: () =>
         renderToString(
           <StaticRouter location={req.url}>
             <FrontloadProvider initialState={frontloadState}>
-              <App />
+              <ServerStatusContext value={statusState}>
+                <App />
+              </ServerStatusContext>
             </FrontloadProvider>
           </StaticRouter>
         ),
     });
 
     const complete_page = htmlTemplate(rendered, data, dev, noclient);
-    res.send(complete_page);
+    res.status(statusState.statusCode).send(complete_page);
   } catch (err) {
     console.log("server render thrown exception");
     Sentry.captureException(err);
