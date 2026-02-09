@@ -12,25 +12,25 @@ import "normalize.css";
 import "../styles/accessibility.css";
 import "../styles/App.css";
 
-import { ToastContext, Toast } from "./Toast";
+import { ToastContext, Toast } from "./primitives/Toast";
 import Topbar from "./Topbar";
 import Navbar from "./Navbar";
-import Home from "./Home";
-import NewBin from "./NewBin";
-import Bin from "./Bin";
-import { FourOhFour } from "./FourOhFour";
-import SearchForm from "./SearchForm";
-import Sku from "./Sku";
-import NewSkuForm from "./NewSkuForm";
-import NewBatchForm from "./NewBatchForm";
-import EULA from "./EULA";
-import Batch from "./Batch";
+import Home from "./features/Home";
+import NewBin from "./features/NewBin";
+import Bin from "./features/Bin";
+import { FourOhFour } from "./primitives/FourOhFour";
+import SearchForm from "./features/SearchForm";
+import Sku from "./features/Sku";
+import NewSkuForm from "./features/NewSkuForm";
+import NewBatchForm from "./features/NewBatchForm";
+import EULA from "./primitives/EULA";
+import Batch from "./features/Batch";
 // Receive component removed - will be redesigned
-import MoveItem from "./MoveItem";
-import Release from "./Release";
-import Audit from "./Audit";
-import SchemaDemo from "./SchemaDemo";
-import SchemaAdmin from "./SchemaAdmin";
+import MoveItem from "./features/MoveItem";
+import Release from "./features/Release";
+import Audit from "./features/Audit";
+import SchemaDemo from "./features/SchemaDemo";
+import SchemaAdmin from "./features/SchemaAdmin";
 
 /**
  * Main app component
