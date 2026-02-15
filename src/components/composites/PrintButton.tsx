@@ -130,10 +130,13 @@ function PrintButton({ value }: { value: string }) {
         return;
       }
 
-      // Find first online printer
-      const onlinePrinter = printersData.printers?.find(
+      // Find online printer, preferring Zebra label printer
+      const onlinePrinters = printersData.printers?.filter(
         (p: { status: string }) => p.status === "online"
-      );
+      ) || [];
+      const onlinePrinter = onlinePrinters.find(
+        (p: { guid: string }) => p.guid.includes("zebra")
+      ) || onlinePrinters[0];
 
       if (!onlinePrinter) {
         // Check if there are any printers at all
