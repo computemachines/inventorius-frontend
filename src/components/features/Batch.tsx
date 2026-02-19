@@ -281,12 +281,12 @@ function Batch({ editable = false }: { editable?: boolean }) {
       )}
 
       {/* Locations */}
-      <FormSection title="Locations" accent="blue" withSeparator={true}>
+      <FormSection title="Locations" bgAccent="bg-dark-accent" withSeparator={true}>
         {itemLocations}
       </FormSection>
 
       {/* Codes */}
-      <FormSection title="Codes" accent="amber">
+      <FormSection title="Codes" bgAccent="bg-accent">
         {unsavedCodes.length == 0 && !editable ? (
           <span className="text-[#6d635d] italic">None</span>
         ) : (
@@ -302,7 +302,7 @@ function Batch({ editable = false }: { editable?: boolean }) {
       </FormSection>
 
       {/* Properties */}
-      <FormSection title="Additional Properties" accent="amber">
+      <FormSection title="Additional Properties" bgAccent="bg-accent">
         {unsavedProperties.length == 0 && !editable ? (
           <span className="text-[#6d635d] italic">None</span>
         ) : (

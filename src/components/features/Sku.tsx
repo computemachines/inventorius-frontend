@@ -221,7 +221,7 @@ function Sku({ editable = false }: { editable?: boolean }) {
 
 
       {/* Locations */}
-      <FormSection title="Locations" accent="blue">
+      <FormSection title="Locations" bgAccent="bg-dark-accent">
         {data.skuBins.kind == "sku-locations" ? (
           <ItemLocations itemLocations={data.skuBins} />
         ) : (
@@ -230,7 +230,7 @@ function Sku({ editable = false }: { editable?: boolean }) {
       </FormSection>
 
       {/* Properties */}
-      <FormSection title="Properties" accent="amber">
+      <FormSection title="Properties" bgAccent="bg-accent">
         {unsavedProperties.length == 0 && !editable ? (
           <span className="text-[#6d635d] italic">None</span>
         ) : (
@@ -246,7 +246,7 @@ function Sku({ editable = false }: { editable?: boolean }) {
       </FormSection>
 
       {/* Derived Batches */}
-      <FormSection title="Derived Batches" accent="blue" withSeparator={true}>
+      <FormSection title="Derived Batches" bgAccent="bg-dark-accent" withSeparator={true}>
         {data.skuBatches.kind == "sku-batches" ? (
           data.skuBatches.state.length > 0 ? (
             <ul className="list-disc list-inside space-y-1">
@@ -266,7 +266,7 @@ function Sku({ editable = false }: { editable?: boolean }) {
 
 
       {/* Codes */}
-      <FormSection title="Codes" accent="amber">
+      <FormSection title="Codes" bgAccent="bg-accent">
         {isCodesEmpty(unsavedCodes) && !editable ? (
           <span className="text-[#6d635d] italic">None</span>
         ) : (

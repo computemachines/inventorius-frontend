@@ -210,7 +210,7 @@ export function NewBatchForm() {
       />
 
       {/* Provenance Section */}
-      <FormSection title="Provenance" accent="blue">
+      <FormSection title="Provenance" bgAccent="bg-dark-accent">
         {/* Source trigger field with typeahead */}
         {sourceField && (
           <SchemaFieldList

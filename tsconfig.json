@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@styles/*": ["src/styles/*"]
+    },
     // "strict": true,
     "allowSyntheticDefaultImports": true,
     "outDir": "dist",

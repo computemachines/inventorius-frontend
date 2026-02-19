@@ -192,7 +192,7 @@ export function CodesSection({
   );
 
   return (
-    <FormSection title={title} accent="amber">
+    <FormSection title={title} bgAccent="bg-accent">
       <div className="flex flex-col gap-2">
         {codes.map((code, index) => {
           const isLastRow = index === codes.length - 1;

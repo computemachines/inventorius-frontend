@@ -694,7 +694,7 @@ function TestPanel({
 
         {/* Dynamic Fields Section */}
         {otherFields.length > 0 && (
-          <FormSection title={dynamicSectionTitle} accent="amber">
+          <FormSection title={dynamicSectionTitle} bgAccent="bg-accent">
             <SchemaFieldList
               fields={otherFields}
               values={fieldValues}

@@ -13,7 +13,6 @@ nohot && console.log("DISABLED ReactRefreshWebpackPlugin");
 // const SentryCliPlugin = require('@sentry/webpack-plugin');
 const version = require("./package.json").version;
 
-
 module.exports = {
   mode: isDevelopment ? "development" : "production",
   devtool: isDevelopment ? "inline-source-map" : "source-map",
@@ -32,7 +31,7 @@ module.exports = {
       // Print service - must come before /api to match first
       { context: ["/api/print"], target: "http://localhost:5000" },
       // Main API
-      { context: ["/api"], target: "http://localhost:8000" }
+      { context: ["/api"], target: "http://localhost:8000" },
     ],
   },
   module: {
@@ -72,11 +71,16 @@ module.exports = {
     isDevelopment && !nohot && new ReactRefreshWebpackPlugin(), //do not include in nonhot client builds. results in cryptic error "internal/crypto/hash.js:69 TypeError ERR_INVALID_ARG_TYPE"
     new ForkTsCheckerWebpackPlugin(),
     new webpack.DefinePlugin({
-      'process.env.VERSION': JSON.stringify(version),
-      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development')
+      "process.env.VERSION": JSON.stringify(version),
+      "process.env.NODE_ENV": JSON.stringify(
+        process.env.NODE_ENV || "development"
+      ),
     }),
   ].filter(Boolean),
   resolve: {
     extensions: [".js", ".ts", ".tsx", ".svg"],
+    alias: {
+      "@styles": path.resolve(__dirname, "src/styles"),
+    },
   },
 };

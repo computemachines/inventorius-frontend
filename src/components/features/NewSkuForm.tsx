@@ -154,7 +154,7 @@ export function NewSkuForm() {
       {otherFields.length > 0 && (
         <FormSection
           title={`${schema.fieldValues.item_type || "Item"} Attributes`}
-          accent="amber"
+          bgAccent="bg-accent"
         >
           <SchemaFieldList
             fields={otherFields}
