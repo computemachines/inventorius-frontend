@@ -1,6 +1,6 @@
 // src/components/primitives/Pager.tsx
 // Fully human reviewed: YES
-// Fully human written: YES
+// Fully human written: MOSTLY
 // Progress: N/A
 //
 // Conversation:
@@ -33,20 +33,17 @@ export const Pager: React.FC<{
 
   const onClick = scrollToTop ? () => window.scrollTo(0, 0) : () => {};
 
-  const PageLink = ({
-    children,
-    toPage,
+  const pageLink = (
+    toPage: number,
     isActive = false,
-  }: {
-    children?: React.ReactNode;
-    toPage: number;
-    isActive?: boolean;
-  }) => (
+    children?: React.ReactNode
+  ) => (
     <Link
+      key={toPage}
       onClick={onClick}
       to={linkHref + toPage}
       className={clsx("mr-0.5 p-2 bg-white text-black rounded no-underline", {
-        "pager--page-link__active": isActive,
+        "bg-accent text-white": isActive,
       })}
     >
       {children || toPage}
@@ -56,15 +53,13 @@ export const Pager: React.FC<{
   return (
     <div className="flex items-baseline justify-center font-semibold">
       <span className="mr-2">Page:</span>
-      {showJumpToStart && <PageLink toPage={1}>|&lt;</PageLink>}
-      {hasPrevPage && <PageLink toPage={page - 1}>&lt;</PageLink>}
+      {showJumpToStart && pageLink(1, false, "|<")}
+      {hasPrevPage && pageLink(page - 1, false, "<")}
       {showJumpToStart && "..."}
-      {shownPageLinks.map((p) => (
-        <PageLink toPage={p} key={p} isActive={p === page} />
-      ))}
+      {shownPageLinks.map((p) => pageLink(p, p === page))}
       {showJumpToEnd && "..."}
-      {hasNextPage && <PageLink toPage={page + 1}>&gt;</PageLink>}
-      {showJumpToEnd && <PageLink toPage={numPages}>&gt;|</PageLink>}
+      {hasNextPage && pageLink(page + 1, false, ">")}
+      {showJumpToEnd && pageLink(numPages, false, ">|")}
     </div>
   );
 };

@@ -8,7 +8,6 @@ import * as Sentry from "@sentry/react";
 import ReactModal from "react-modal";
 
 import "../styles/tailwind.css";
-import "normalize.css";
 import "../styles/accessibility.css";
 import "../styles/App.css";
 
