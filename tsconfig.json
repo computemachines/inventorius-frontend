@@ -2,7 +2,9 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@styles/*": ["src/styles/*"]
+      "@styles/*": ["src/styles/*"],
+      "@api/*": ["src/api-client/*"],
+      "@components/*": ["src/components/*"]
     },
     // "strict": true,
     "allowSyntheticDefaultImports": true,

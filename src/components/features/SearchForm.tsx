@@ -5,7 +5,6 @@
 // Conversation:
 // > (no discussion yet)
 
-
 import * as React from "react";
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -19,7 +18,7 @@ function SearchForm() {
   const location = useLocation();
   const navigate = useNavigate();
   const urlQuery = parse(location.search).query as string;
-  const page = parseInt(parse(location.search).page as string);
+  const page = parseInt(parse(location.search).page as string) || undefined;
   const [liveQuery, setLiveQuery] = useState(urlQuery);
   return (
     <div className="search-form">
@@ -35,7 +34,7 @@ function SearchForm() {
       </form>
       <SearchResults
         query={liveQuery}
-        page={page || 1}
+        page={page}
         unsetPage={() => {
           navigate("/search?" + stringify({ urlQuery }));
         }}

@@ -22,7 +22,7 @@ export const Pager: React.FC<{
 }> = ({ currentPage: page, numPages, linkHref, scrollToTop = true }) => {
   const shownPageLinks = [page - 2, page - 1, page, page + 1, page + 2].filter(
     // actually exists
-    (p) => p >= 1 && p <= numPages
+    (p) => p >= 1 && p <= numPages,
   );
   const hasPrevPage = page > 1;
   const hasNextPage = page < numPages;
@@ -36,14 +36,15 @@ export const Pager: React.FC<{
   const pageLink = (
     toPage: number,
     isActive = false,
-    children?: React.ReactNode
+    children?: React.ReactNode,
   ) => (
     <Link
       key={toPage}
       onClick={onClick}
       to={linkHref + toPage}
-      className={clsx("mr-0.5 p-2 bg-white text-black rounded no-underline", {
+      className={clsx("mr-0.5 p-2 rounded no-underline", {
         "bg-accent text-white": isActive,
+        "bg-white text-black": !isActive,
       })}
     >
       {children || toPage}
@@ -51,7 +52,7 @@ export const Pager: React.FC<{
   );
 
   return (
-    <div className="flex items-baseline justify-center font-semibold">
+    <div className="flex items-baseline justify-center font-semibold mt-2">
       <span className="mr-2">Page:</span>
       {showJumpToStart && pageLink(1, false, "|<")}
       {hasPrevPage && pageLink(page - 1, false, "<")}

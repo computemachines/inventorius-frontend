@@ -1,10 +1,11 @@
 // src/components/features/SearchResults.tsx
-// Fully human reviewed: NO
+// Fully human reviewed: YES
+// Fully human written: YES
 // Progress: NONE
 //
 // Conversation:
-// > (no discussion yet)
-
+// > Should this use react-router? Is react-router still the best choice here?
+//   What about how I use ssr? When responding cite other files.
 
 import * as React from "react";
 import { useEffect } from "react";
@@ -12,18 +13,14 @@ import { useNavigate } from "react-router";
 import { useFrontload } from "react-frontload";
 import { ApiContext, FrontloadContext } from "../../api-client/api-client";
 import {
-  BinState,
   isBatchState,
   isBinState,
   isSkuState,
   SearchResult,
   SearchResults as APISearchResults,
-  SkuState,
 } from "../../api-client/data-models";
 
-import "../../styles/SearchResults.css";
-import "../../styles/infoPanel.css";
-import { parse, stringifyUrl } from "query-string";
+import { stringifyUrl } from "query-string";
 import DataTable, { HeaderSpec } from "../composites/DataTable";
 import { Pager } from "../primitives/Pager";
 
@@ -69,23 +66,19 @@ function SearchResultsTable({
 
 function SearchResults({
   query,
-  page,
+  page = 1,
   unsetPage,
-  limit,
+  limit = 20,
 }: {
   query: string;
   page?: number;
   unsetPage?: () => void;
   limit?: number;
 }) {
-  page = page || 1;
-  limit = limit || 20;
-
   const startingFrom = (page - 1) * limit;
   const { data, frontloadMeta, setData } = useFrontload(
     "searchresults-component",
     async ({ api }: FrontloadContext) => {
-      console.log("frontload fetching");
       return {
         searchResults: await api.getSearchResults({
           query,
@@ -93,7 +86,7 @@ function SearchResults({
           limit: limit.toString(),
         }),
       };
-    }
+    },
   );
 
   const api = React.useContext(ApiContext);
@@ -102,6 +95,7 @@ function SearchResults({
 
   // Update search results when query changes.
   // Do not update if not resolving most recent promise.
+  // TODO: Change to AbortController
   useEffect(() => {
     if (!frontloadMeta.done) return;
 
@@ -135,7 +129,7 @@ function SearchResults({
       navigate(stringifyUrl({ url: "/search", query: urlParams }));
     }, 10000);
     return () => clearTimeout(timer);
-  });
+  }, [query, page]);
 
   // -------- branching --------
 
@@ -144,23 +138,26 @@ function SearchResults({
     return <div>API error!</div>;
 
   const numPages = Math.ceil(
-    data.searchResults.state.total_num_results / data.searchResults.state.limit
+    data.searchResults.state.total_num_results / data.searchResults.state.limit,
   );
 
   return (
-    <div className="info-item">
-      <div className="info-item-title">
+    <div className="mb-6">
+      <div
+        className="flex items-baseline justify-between text-dark-abyss italic
+          border-b border-dark-abyss mb-1.5"
+      >
         {data.searchResults.state.total_num_results} Results
       </div>
       <SearchResultsTable
         searchResults={data.searchResults}
         loading={isLoading}
-        onClickLink={(e) =>
+        onClickLink={() =>
           navigate(
             stringifyUrl({
               url: "/search",
               query: page == 1 ? { query } : { query, page },
-            })
+            }),
           )
         }
       />
