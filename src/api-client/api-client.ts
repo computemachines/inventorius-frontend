@@ -59,6 +59,21 @@ export class ApiClient {
   }
 
 
+  private async _fetch(url: string, options?: RequestInit): Promise<Response> {
+    const method = options?.method ?? "GET";
+    const start = Date.now();
+    console.log(`[api] ${method} ${url}`);
+    try {
+      const resp = await fetch(url, options);
+      console.log(`[api] ${method} ${url} → ${resp.status} (${Date.now() - start}ms)`);
+      return resp;
+    } catch (err) {
+      console.error(`[api] ${method} ${url} → FETCH ERROR (${Date.now() - start}ms)`, err);
+      throw err;
+    }
+  }
+
+
   hydrate<T extends Sku | Batch>(server_rendered: T): T {
     if (Object.getPrototypeOf(server_rendered) !== Object.prototype)
       return server_rendered;
@@ -84,14 +99,14 @@ export class ApiClient {
 
 
   async getStatus(): Promise<ApiStatus> {
-    const resp = await fetch(`${this.hostname}/api/status`);
+    const resp = await this._fetch(`${this.hostname}/api/status`);
     if (!resp.ok) throw Error(`${this.hostname}/api/status returned error code`);
     return new ApiStatus({ ... await resp.json(), hostname: this.hostname });
   }
 
 
   async getStats(): Promise<Stats> {
-    const resp = await fetch(`${this.hostname}/api/stats`);
+    const resp = await this._fetch(`${this.hostname}/api/stats`);
     if (!resp.ok) throw Error(`${this.hostname}/api/stats returned error code`);
     const json = await resp.json();
     return { ...json, kind: "stats" };
@@ -99,7 +114,7 @@ export class ApiClient {
 
 
   async getNextBin(): Promise<NextBin> {
-    const resp = await fetch(`${this.hostname}/api/next/bin`);
+    const resp = await this._fetch(`${this.hostname}/api/next/bin`);
     const json = await resp.json();
     if (!resp.ok) throw Error(`${this.hostname}/api/next/bin returned error status`);
     return new NextBin({ ...json, hostname: this.hostname });
@@ -107,7 +122,7 @@ export class ApiClient {
 
 
   async getNextSku(): Promise<NextSku> {
-    const resp = await fetch(`${this.hostname}/api/next/sku`);
+    const resp = await this._fetch(`${this.hostname}/api/next/sku`);
     const json = await resp.json();
     if (!resp.ok) throw Error(`${this.hostname}/api/next/sku returned error status`);
     return new NextSku({ ...json, hostname: this.hostname });
@@ -115,7 +130,7 @@ export class ApiClient {
 
 
   async getNextBatch(): Promise<NextBatch> {
-    const resp = await fetch(`${this.hostname}/api/next/batch`);
+    const resp = await this._fetch(`${this.hostname}/api/next/batch`);
     const json = await resp.json();
     if (!resp.ok) throw Error(`${this.hostname}/api/next/sku returned error status`);
     return new NextBatch({ ...json, hostname: this.hostname });
@@ -127,7 +142,7 @@ export class ApiClient {
     limit?: string;
     startingFrom?: string;
   }): Promise<SearchResults | Problem> {
-    const resp = await fetch(
+    const resp = await this._fetch(
       `${this.hostname}/api/search?${new URLSearchParams(params).toString()}`
     );
     const json = await resp.json();
@@ -138,7 +153,7 @@ export class ApiClient {
 
 
   async getBin(id: string): Promise<Bin | Problem> {
-    const resp = await fetch(`${this.hostname}/api/bin/${id}`);
+    const resp = await this._fetch(`${this.hostname}/api/bin/${id}`);
     const json = await resp.json();
 
     if (resp.ok) return new Bin({ ...json, hostname: this.hostname });
@@ -147,7 +162,7 @@ export class ApiClient {
 
 
   async createBin({ id, props }: { id: string; props?: unknown }): Promise<Status | Problem> {
-    const resp = await fetch(`${this.hostname}/api/bins`, {
+    const resp = await this._fetch(`${this.hostname}/api/bins`, {
       method: "POST",
       body: JSON.stringify({ id, props }),
       headers: {
@@ -164,7 +179,7 @@ export class ApiClient {
 
 
   async getSku(id: string): Promise<Sku | Problem> {
-    const resp = await fetch(`${this.hostname}/api/sku/${id}`);
+    const resp = await this._fetch(`${this.hostname}/api/sku/${id}`);
     const json = await resp.json();
     if (resp.ok) return new Sku({ ...json, hostname: this.hostname });
     else return { ...json, kind: "problem" };
@@ -178,7 +193,7 @@ export class ApiClient {
     owned_codes?: string[];
     associated_codes?: string[];
   }): Promise<Status | Problem> {
-    const resp = await fetch(`${this.hostname}/api/skus`, {
+    const resp = await this._fetch(`${this.hostname}/api/skus`, {
       method: "POST",
       body: JSON.stringify(params),
       headers: {
@@ -195,7 +210,7 @@ export class ApiClient {
 
 
   async getBatch(batch_id: string): Promise<Batch | Problem> {
-    const resp = await fetch(`${this.hostname}/api/batch/${batch_id}`);
+    const resp = await this._fetch(`${this.hostname}/api/batch/${batch_id}`);
     const json = await resp.json();
     if (resp.ok) return new Batch({ ...json, hostname: this.hostname });
     else return { ...json, kind: "problem" };
@@ -210,7 +225,7 @@ export class ApiClient {
     associated_codes?: string[];
     props?: unknown;
   }): Promise<Status | Problem> {
-    const resp = await fetch(`${this.hostname}/api/batches`, {
+    const resp = await this._fetch(`${this.hostname}/api/batches`, {
       method: "POST",
       body: JSON.stringify(params),
       headers: {
@@ -235,7 +250,7 @@ export class ApiClient {
     item_id: string;
     quantity: number;
   }): Promise<Status | Problem> {
-    const resp = await fetch(`${this.hostname}/api/bin/${into_id}/contents`, {
+    const resp = await this._fetch(`${this.hostname}/api/bin/${into_id}/contents`, {
       method: "POST",
       body: JSON.stringify({
         id: item_id,
@@ -254,7 +269,7 @@ export class ApiClient {
   }
 
   async release({ from_id, item_id, quantity }): Promise<Status | Problem> {
-    const resp = await fetch(`${this.hostname}/api/bin/${from_id}/contents`, {
+    const resp = await this._fetch(`${this.hostname}/api/bin/${from_id}/contents`, {
       method: "POST",
       body: JSON.stringify({
         id: item_id,
@@ -273,7 +288,7 @@ export class ApiClient {
   }
 
   async move({ from_id, to_id, item_id, quantity }): Promise < Status | Problem > {
-    const resp = await fetch(`${this.hostname}/api/bin/${from_id}/contents/move`, {
+    const resp = await this._fetch(`${this.hostname}/api/bin/${from_id}/contents/move`, {
       method: "PUT",
       body: JSON.stringify({
         id: item_id,
@@ -320,7 +335,7 @@ export class ApiClient {
       params.set("active", context.activeBundleIds.join(","));
     }
 
-    const resp = await fetch(
+    const resp = await this._fetch(
       `${this.hostname}/api/schema/${entityType}/search?${params.toString()}`
     );
 
@@ -367,7 +382,7 @@ export class ApiClient {
       params.set("active", context.activeBundleIds.join(","));
     }
 
-    const resp = await fetch(
+    const resp = await this._fetch(
       `${this.hostname}/api/schema/${entityType}/search?${params.toString()}`
     );
 
@@ -423,7 +438,7 @@ export class ApiClient {
     if (body) {
       options.body = JSON.stringify(body);
     }
-    const resp = await fetch(`${this.hostname}${path}`, options);
+    const resp = await this._fetch(`${this.hostname}${path}`, options);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ error: resp.statusText }));
       throw new Error((err as { error?: string; message?: string }).error ||

@@ -113,7 +113,8 @@ app.get("/debug-sentry", function mainHandler(req, res) {
 });
 
 app.get("/*", cors(), async function (req, res) {
-  dev && console.log(req.path);
+  const start = Date.now();
+  console.log(`[ssr] ${req.method} ${req.url}`);
 
   const frontloadState = createFrontloadState.server({
     context: { api: new ApiClient(API_HOSTNAME) },
@@ -139,12 +140,13 @@ app.get("/*", cors(), async function (req, res) {
         ),
     });
 
+    console.log(`[ssr] ${req.url} → ${statusState.statusCode} (${Date.now() - start}ms)`);
     const complete_page = htmlTemplate(rendered, data, dev, noclient);
     res.status(statusState.statusCode).send(complete_page);
   } catch (err) {
-    console.log("server render thrown exception");
+    console.error(`[ssr] ${req.url} → ERROR (${Date.now() - start}ms)`, err);
     Sentry.captureException(err);
-    console.error(err);
+    res.status(500).send("Server render error");
   }
 });
 
