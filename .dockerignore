@@ -1,0 +1,8 @@
+.git
+.env
+.playwright-mcp
+coverage
+dist
+docs
+node_modules
+*.log

@@ -7,6 +7,13 @@ const ReactRefreshTypeScript = require("react-refresh-typescript").default;
 
 const isDevelopment = process.env.NODE_ENV !== "production";
 const nohot = process.env.NO_HOT === "true"; // only used in ReactRefreshWebpackPlugin removal
+const apiProxyTarget =
+  process.env.API_PROXY_TARGET || "http://localhost:8000";
+const printProxyTarget =
+  process.env.PRINT_PROXY_TARGET || "http://localhost:5000";
+const allowedHosts =
+  process.env.DEV_SERVER_ALLOWED_HOSTS === "all" ? "all" : "auto";
+
 isDevelopment && console.log("DEVELOPMENT MODE");
 nohot && console.log("DISABLED ReactRefreshWebpackPlugin");
 
@@ -27,11 +34,12 @@ module.exports = {
     historyApiFallback: true,
     port: 8080,
     hot: "only",
+    allowedHosts,
     proxy: [
       // Print service - must come before /api to match first
-      { context: ["/api/print"], target: "http://localhost:5000" },
+      { context: ["/api/print"], target: printProxyTarget },
       // Main API
-      { context: ["/api"], target: "http://localhost:8000" },
+      { context: ["/api"], target: apiProxyTarget },
     ],
   },
   module: {
