@@ -72,15 +72,16 @@ function ClientApp({
 function initialize_app() {
   init_sentry();
 
+  // Browser requests stay on the origin that served the frontend. Webpack,
+  // local nginx, or production Traefik can then route /api to the API service.
+  const api = new ApiClient();
+
   if (window.__FRONTLOAD_SERVER_STATE) {
     // hydrating the component tree that the server preloaded/prerendered
-    // if server injects __DEV_MODE into dom, then use development hostname for api
 
     const frontloadState = createFrontloadState.client({
       // this context object is passed as the only argument to the callbacks collected by the useFrontload hook
-      context: {
-        api: new ApiClient(window.__DEV_MODE ? "http://localhost:8080" : ""),
-      },
+      context: { api },
 
       // data returned by frontloadServerRender. This contains the prefetched data.
       serverRenderedData: window.__FRONTLOAD_SERVER_STATE,
@@ -98,7 +99,7 @@ function initialize_app() {
     // same as the hydrating case, except there is no server rendered data
     const frontloadState = createFrontloadState.client({
       serverRenderedData: {},
-      context: { api: new ApiClient("http://localhost:8080") },
+      context: { api },
       logging: true,
     });
     frontloadState.setFirstRenderDoneOnClient();
