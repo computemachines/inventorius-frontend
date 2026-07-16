@@ -24,7 +24,7 @@ import NewSkuForm from "./features/NewSkuForm";
 import NewBatchForm from "./features/NewBatchForm";
 import EULA from "./primitives/EULA";
 import Batch from "./features/Batch";
-// Receive component removed - will be redesigned
+import Receive from "./features/Receive";
 import MoveItem from "./features/MoveItem";
 import Release from "./features/Release";
 import Audit from "./features/Audit";
@@ -74,7 +74,7 @@ function App() {
                 <Route path="/sku/:id" element={<Sku />} />
                 <Route path="/batch/:id/edit" element={<Batch editable />} />
                 <Route path="/batch/:id" element={<Batch />} />
-                {/* /receive route removed - will be redesigned */}
+                <Route path="/receive" element={<Receive />} />
                 <Route path="/release" element={<Release />} />
                 <Route path="/audit" element={<Audit />} />
                 <Route path="/move" element={<MoveItem />} />

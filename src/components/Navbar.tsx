@@ -47,7 +47,9 @@ function Navbar({
       <NavLink className="navlink" to="/audit">
         Audit
       </NavLink>
-{/* Receive link removed - will be redesigned */}
+      <NavLink className="navlink" to="/receive">
+        Receive
+      </NavLink>
       <NavLink className="navlink" to="/release">
         Release
       </NavLink>
