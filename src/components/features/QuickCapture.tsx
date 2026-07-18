@@ -23,6 +23,7 @@ export default function QuickCapture() {
   const { setToastContent } = useContext(ToastContext);
 
   const [description, setDescription] = useState("");
+  const [code, setCode] = useState("");
   const [binId, setBinId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [validationError, setValidationError] = useState("");
@@ -68,6 +69,7 @@ export default function QuickCapture() {
     try {
       const response = await api.quickCapture({
         description: summary,
+        ...(code.trim() ? { code: code.trim() } : {}),
         bin_id: destination,
         quantity: count,
       });
@@ -92,6 +94,7 @@ export default function QuickCapture() {
       // the same destination. Retain the bin and return to the description.
       setBinId(destination);
       setDescription("");
+      setCode("");
       setQuantity("1");
       navigate(`/capture?into=${encodeURIComponent(destination)}`, {
         replace: true,
@@ -148,6 +151,19 @@ export default function QuickCapture() {
         onChange={(event) => setDescription(event.target.value)}
         placeholder="Blue bag of assorted JST connectors"
         maxLength={500}
+        className={`${inputClasses} mb-5`}
+      />
+
+      <label htmlFor="capture-code" className={labelClasses}>
+        Barcode or other code (optional)
+      </label>
+      <input
+        id="capture-code"
+        value={code}
+        onChange={(event) => setCode(event.target.value)}
+        placeholder="Scan or enter a code"
+        maxLength={200}
+        spellCheck={false}
         className={`${inputClasses} mb-5`}
       />
 
