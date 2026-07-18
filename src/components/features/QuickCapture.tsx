@@ -136,8 +136,15 @@ export default function QuickCapture() {
           onChange={(event) => setBinId(event.target.value)}
           onBlur={() => setBinId(normalizeBinId(binId))}
           onKeyDown={(event) => {
-            if (event.key === "Enter") {
+            const scannedBin = normalizeBinId(event.currentTarget.value);
+            const isForwardTabFromValidBin =
+              event.key === "Tab" &&
+              !event.shiftKey &&
+              /^BIN\d+$/.test(scannedBin);
+
+            if (event.key === "Enter" || isForwardTabFromValidBin) {
               event.preventDefault();
+              setBinId(scannedBin);
               descriptionInput.current?.focus();
             }
           }}
