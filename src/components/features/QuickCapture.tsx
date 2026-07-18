@@ -4,6 +4,7 @@ import { parse } from "query-string";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiContext } from "../../api-client/api-client";
+import CodesInput, { Code } from "../composites/CodesInput";
 import { ToastContext } from "../primitives/Toast";
 import ItemLabel from "../primitives/ItemLabel";
 
@@ -23,7 +24,9 @@ export default function QuickCapture() {
   const { setToastContent } = useContext(ToastContext);
 
   const [description, setDescription] = useState("");
-  const [code, setCode] = useState("");
+  const [codes, setCodes] = useState<Code[]>([
+    { kind: "owned", value: "" },
+  ]);
   const [binId, setBinId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [validationError, setValidationError] = useState("");
@@ -67,9 +70,18 @@ export default function QuickCapture() {
 
     setSubmitting(true);
     try {
+      const ownedCodes = codes
+        .filter(({ kind, value }) => kind === "owned" && value.trim())
+        .map(({ value }) => value.trim());
+      const associatedCodes = codes
+        .filter(({ kind, value }) => kind === "associated" && value.trim())
+        .map(({ value }) => value.trim());
       const response = await api.quickCapture({
         description: summary,
-        ...(code.trim() ? { code: code.trim() } : {}),
+        ...(ownedCodes.length ? { owned_codes: ownedCodes } : {}),
+        ...(associatedCodes.length
+          ? { associated_codes: associatedCodes }
+          : {}),
         bin_id: destination,
         quantity: count,
       });
@@ -94,7 +106,7 @@ export default function QuickCapture() {
       // the same destination. Retain the bin and return to the description.
       setBinId(destination);
       setDescription("");
-      setCode("");
+      setCodes([{ kind: "owned", value: "" }]);
       setQuantity("1");
       navigate(`/capture?into=${encodeURIComponent(destination)}`, {
         replace: true,
@@ -154,18 +166,12 @@ export default function QuickCapture() {
         className={`${inputClasses} mb-5`}
       />
 
-      <label htmlFor="capture-code" className={labelClasses}>
-        Barcode or other code (optional)
+      <label className={labelClasses}>
+        Codes (optional)
       </label>
-      <input
-        id="capture-code"
-        value={code}
-        onChange={(event) => setCode(event.target.value)}
-        placeholder="Scan or enter a code"
-        maxLength={200}
-        spellCheck={false}
-        className={`${inputClasses} mb-5`}
-      />
+      <div className="mb-5">
+        <CodesInput codes={codes} setCodes={setCodes} />
+      </div>
 
       <label htmlFor="capture-quantity" className={labelClasses}>
         Quantity

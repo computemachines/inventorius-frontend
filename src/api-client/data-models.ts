@@ -70,7 +70,8 @@ export interface CaptureResult extends Status {
     bin_id: string;
     quantity: number;
     description: string;
-    code: string | null;
+    owned_codes: string[];
+    associated_codes: string[];
     provisional: true;
   };
 }

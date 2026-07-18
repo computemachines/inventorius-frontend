@@ -116,7 +116,8 @@ export class ApiClient {
 
   async quickCapture(params: {
     description: string;
-    code?: string;
+    owned_codes?: string[];
+    associated_codes?: string[];
     bin_id: string;
     quantity: number;
   }): Promise<CaptureResult | Problem> {
