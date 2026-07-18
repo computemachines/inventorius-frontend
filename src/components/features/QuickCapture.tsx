@@ -128,43 +128,15 @@ export default function QuickCapture() {
       <label htmlFor="capture-bin" className={labelClasses}>
         Destination bin
       </label>
-      <div className="flex gap-2 mb-5">
-        <input
-          ref={binInput}
-          id="capture-bin"
-          value={binId}
-          onChange={(event) => setBinId(event.target.value)}
-          onBlur={() => setBinId(normalizeBinId(binId))}
-          onKeyDown={(event) => {
-            const scannedBin = normalizeBinId(event.currentTarget.value);
-            const isForwardTabFromValidBin =
-              event.key === "Tab" &&
-              !event.shiftKey &&
-              /^BIN\d+$/.test(scannedBin);
-
-            if (event.key === "Enter" || isForwardTabFromValidBin) {
-              event.preventDefault();
-              setBinId(scannedBin);
-              descriptionInput.current?.focus();
-            }
-          }}
-          placeholder="BIN000001"
-          className={inputClasses}
-        />
-        {binId && (
-          <button
-            type="button"
-            onClick={() => {
-              setBinId("");
-              navigate("/capture", { replace: true });
-              binInput.current?.focus();
-            }}
-            className="rounded-md border border-[#cdd2d6] px-4 text-[#6d635d] hover:bg-[#f1f3f4]"
-          >
-            Change
-          </button>
-        )}
-      </div>
+      <input
+        ref={binInput}
+        id="capture-bin"
+        value={binId}
+        onChange={(event) => setBinId(event.target.value)}
+        onBlur={() => setBinId(normalizeBinId(binId))}
+        placeholder="BIN000001"
+        className={`${inputClasses} mb-5`}
+      />
 
       <label htmlFor="capture-description" className={labelClasses}>
         What is it?
