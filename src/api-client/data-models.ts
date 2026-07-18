@@ -64,6 +64,16 @@ export interface Status {
   status: string;
 }
 
+export interface CaptureResult extends Status {
+  state: {
+    sku_id: string;
+    bin_id: string;
+    quantity: number;
+    description: string;
+    provisional: true;
+  };
+}
+
 class RestEndpoint {
   state: unknown;
   operations: Record<string, CallableRestOperation>;

@@ -89,6 +89,7 @@ function Home() {
           Quick Actions
         </h2>
         <div className="flex flex-wrap gap-2">
+          <QuickActionLink to="/capture" label="Quick Capture" />
           <QuickActionLink to="/receive" label="Receive Items" />
           <QuickActionLink to="/release" label="Release Items" />
           <QuickActionLink to="/move" label="Move Items" />

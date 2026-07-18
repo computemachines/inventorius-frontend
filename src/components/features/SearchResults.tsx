@@ -122,15 +122,6 @@ function SearchResults({
     if (unsetPage && page != 1) unsetPage();
   }, [query]);
 
-  // save query to history if stay on page for 10s
-  useEffect(() => {
-    const urlParams = page == 1 ? { query } : { query, page };
-    const timer = setTimeout(() => {
-      navigate(stringifyUrl({ url: "/search", query: urlParams }));
-    }, 10000);
-    return () => clearTimeout(timer);
-  }, [query, page]);
-
   // -------- branching --------
 
   if (frontloadMeta.pending) return <div>Loading ...</div>;

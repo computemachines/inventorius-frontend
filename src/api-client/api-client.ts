@@ -19,6 +19,7 @@ import {
   AttributeBundle,
   BundleLookupResult,
   BundleContext,
+  CaptureResult,
 } from "./data-models";
 
 /**
@@ -110,6 +111,24 @@ export class ApiClient {
     if (!resp.ok) throw Error(`${this.hostname}/api/stats returned error code`);
     const json = await resp.json();
     return { ...json, kind: "stats" };
+  }
+
+
+  async quickCapture(params: {
+    description: string;
+    bin_id: string;
+    quantity: number;
+  }): Promise<CaptureResult | Problem> {
+    const resp = await this._fetch(`${this.hostname}/api/intake`, {
+      method: "POST",
+      body: JSON.stringify(params),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    const json = await resp.json();
+    if (resp.ok) return { ...json, kind: "status" };
+    return { ...json, kind: "problem" };
   }
 
 
