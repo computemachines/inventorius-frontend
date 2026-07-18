@@ -30,6 +30,7 @@ import Release from "./features/Release";
 import Audit from "./features/Audit";
 import SchemaDemo from "./features/SchemaDemo";
 import SchemaAdmin from "./features/SchemaAdmin";
+import QuickCapture from "./features/QuickCapture";
 
 /**
  * Main app component
@@ -75,6 +76,7 @@ function App() {
                 <Route path="/batch/:id/edit" element={<Batch editable />} />
                 <Route path="/batch/:id" element={<Batch />} />
                 <Route path="/receive" element={<Receive />} />
+                <Route path="/capture" element={<QuickCapture />} />
                 <Route path="/release" element={<Release />} />
                 <Route path="/audit" element={<Audit />} />
                 <Route path="/move" element={<MoveItem />} />
