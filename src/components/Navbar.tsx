@@ -30,6 +30,9 @@ function Navbar({
       <NavLink className="navlink" to="/">
         Home
       </NavLink>
+      <NavLink className="navlink" to="/capture">
+        Quick Capture
+      </NavLink>
       <NavlinkDropdown text="New">
         <NavLink className="navlink" to="/new/bin">
           New Bin
