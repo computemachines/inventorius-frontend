@@ -64,6 +64,7 @@ function CodeInput({
         id={id}
         type="text"
         value={code.value}
+        spellCheck={false}
         onChange={(e) => {
           setCode({ ...code, value: e.target.value });
         }}

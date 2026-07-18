@@ -150,6 +150,7 @@ export default function QuickCapture() {
         onChange={(event) => setBinId(event.target.value)}
         onBlur={() => setBinId(normalizeBinId(binId))}
         placeholder="BIN000001"
+        spellCheck={false}
         className={`${inputClasses} mb-5`}
       />
 
@@ -163,6 +164,7 @@ export default function QuickCapture() {
         onChange={(event) => setDescription(event.target.value)}
         placeholder="Blue bag of assorted JST connectors"
         maxLength={500}
+        spellCheck={true}
         className={`${inputClasses} mb-5`}
       />
 
