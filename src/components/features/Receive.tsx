@@ -4,6 +4,7 @@ import { parse } from "query-string";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiContext } from "../../api-client/api-client";
+import { normalizeInventoriusId } from "../../identifiers";
 import { ToastContext } from "../primitives/Toast";
 import ItemLabel from "../primitives/ItemLabel";
 
@@ -11,10 +12,6 @@ const labelClasses =
   "block text-[0.85rem] font-semibold text-[#04151f] uppercase tracking-wide mb-1.5";
 const inputClasses =
   "w-full rounded-md border border-[#cdd2d6] bg-white px-3 py-3 text-base text-[#04151f] focus:border-[#26532b] focus:outline-none focus:ring-2 focus:ring-[#26532b]/20";
-
-function normalizeId(value: string): string {
-  return value.trim().toUpperCase();
-}
 
 export default function Receive() {
   const location = useLocation();
@@ -34,9 +31,9 @@ export default function Receive() {
   useEffect(() => {
     const query = parse(location.search);
     const initialBin =
-      typeof query.into === "string" ? normalizeId(query.into) : "";
+      typeof query.into === "string" ? normalizeInventoriusId(query.into) : "";
     const initialItem =
-      typeof query.item === "string" ? normalizeId(query.item) : "";
+      typeof query.item === "string" ? normalizeInventoriusId(query.item) : "";
     const initialQuantity =
       typeof query.quantity === "string" ? query.quantity : "1";
 
@@ -53,18 +50,13 @@ export default function Receive() {
     event.preventDefault();
     setValidationError("");
 
-    const destination = normalizeId(binId);
-    const item = normalizeId(itemId);
+    const destination = normalizeInventoriusId(binId);
+    let item = normalizeInventoriusId(itemId);
     const count = Number(quantity);
 
     if (!destination.startsWith("BIN")) {
       setValidationError("Scan or enter a BIN label.");
       binInput.current?.focus();
-      return;
-    }
-    if (!item.startsWith("SKU") && !item.startsWith("BAT")) {
-      setValidationError("Scan or enter a SKU or batch label.");
-      itemInput.current?.focus();
       return;
     }
     if (!Number.isInteger(count) || count < 1) {
@@ -74,6 +66,35 @@ export default function Receive() {
 
     setSubmitting(true);
     try {
+      if (!item.startsWith("SKU") && !item.startsWith("BAT")) {
+        const usage = await api.getCodeUsage(itemId.trim());
+        const ownedMatches = usage.usedBy.filter(
+          ({ relationship }) => relationship === "owned",
+        );
+
+        if (ownedMatches.length === 0 && usage.usedBy.length > 0) {
+          setValidationError(
+            "That code is associated with an item but does not identify it. " +
+              "Scan a SKU or batch label.",
+          );
+          itemInput.current?.focus();
+          return;
+        }
+        if (ownedMatches.length === 0) {
+          setValidationError("No SKU or batch uses that code.");
+          itemInput.current?.focus();
+          return;
+        }
+        if (ownedMatches.length > 1) {
+          setValidationError(
+            "More than one item claims that code; it needs reconciliation.",
+          );
+          itemInput.current?.focus();
+          return;
+        }
+        item = ownedMatches[0].id;
+      }
+
       const response = await api.receive({
         into_id: destination,
         item_id: item,
@@ -104,6 +125,9 @@ export default function Receive() {
         replace: true,
       });
       requestAnimationFrame(() => itemInput.current?.focus());
+    } catch {
+      setValidationError("Could not resolve the scanned item.");
+      itemInput.current?.focus();
     } finally {
       setSubmitting(false);
     }
@@ -119,7 +143,7 @@ export default function Receive() {
         Receive inventory
       </h2>
       <p className="text-[#6d635d] mb-6">
-        Scan a destination bin once, then scan each SKU or batch going into it.
+        Scan a destination bin once, then scan each item going into it.
       </p>
 
       {validationError && (
@@ -135,37 +159,15 @@ export default function Receive() {
       <label htmlFor="receive-bin" className={labelClasses}>
         Destination bin
       </label>
-      <div className="flex gap-2 mb-5">
-        <input
-          ref={binInput}
-          id="receive-bin"
-          value={binId}
-          onChange={(event) => setBinId(event.target.value)}
-          onBlur={() => setBinId(normalizeId(binId))}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              itemInput.current?.focus();
-            }
-          }}
-          placeholder="BIN000001"
-          className={inputClasses}
-        />
-        {binId && (
-          <button
-            type="button"
-            onClick={() => {
-              setBinId("");
-              navigate("/receive", { replace: true });
-              binInput.current?.focus();
-            }}
-            className="rounded-md border border-[#cdd2d6] px-4 text-[#6d635d]
-              hover:bg-[#f1f3f4]"
-          >
-            Change
-          </button>
-        )}
-      </div>
+      <input
+        ref={binInput}
+        id="receive-bin"
+        value={binId}
+        onChange={(event) => setBinId(event.target.value)}
+        onBlur={() => setBinId(normalizeInventoriusId(binId))}
+        placeholder="BIN000001"
+        className={`${inputClasses} mb-5`}
+      />
 
       <label htmlFor="receive-item" className={labelClasses}>
         Item
@@ -175,8 +177,8 @@ export default function Receive() {
         id="receive-item"
         value={itemId}
         onChange={(event) => setItemId(event.target.value)}
-        onBlur={() => setItemId(normalizeId(itemId))}
-        placeholder="SKU or BAT label"
+        onBlur={() => setItemId(normalizeInventoriusId(itemId))}
+        placeholder="SKU, BAT, or barcode"
         className={`${inputClasses} mb-5`}
       />
 

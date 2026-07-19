@@ -166,12 +166,8 @@ function Sku({ editable = false }: { editable?: boolean }) {
               const resp = await api.hydrate(data.sku).delete();
               if (resp.kind == "status") {
                 setAlertContent({ content: <p>Deleted</p>, mode: "success" });
-                const updatedSku = await api.getSku(id);
-                const updatedSkuBins =
-                  updatedSku.kind == "sku" ? await updatedSku.bins() : updatedSku;
-                const updatedSkuBatches =
-                  updatedSku.kind == "sku" ? await updatedSku.batches() : updatedSku;
-                setData(() => ({ sku: updatedSku, skuBins: updatedSkuBins, skuBatches: updatedSkuBatches }));
+                setShowModal(false);
+                navigate("/search");
               } else {
                 setAlertContent({
                   content: <p>{resp.title}</p>,

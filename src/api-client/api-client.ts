@@ -15,34 +15,14 @@ import {
   Status,
   Stats,
   CodeUsageResult,
-  CodeUsageRef,
   AttributeBundle,
   BundleLookupResult,
   BundleContext,
   CaptureResult,
+  ProcessDefinition,
+  ProcessDefinitionState,
+  ProcessDefinitionWrite,
 } from "./data-models";
-
-/**
- * Mock code usage data - simulates which SKUs/batches share certain codes.
- * TODO: Replace with real API endpoint /api/codes/{code}/usage
- */
-const MOCK_CODE_USAGE: Record<string, CodeUsageRef[]> = {
-  "RC0402FR": [
-    { type: "sku", id: "SKU000012", name: "10kΩ 0402 Resistor (DigiKey)", relationship: "associated" },
-    { type: "sku", id: "SKU000045", name: "10kΩ 0402 Resistor (Mouser)", relationship: "associated" },
-  ],
-  "ACME": [
-    { type: "sku", id: "SKU000012", name: "10kΩ 0402 Resistor (DigiKey)", relationship: "associated" },
-    { type: "sku", id: "SKU000013", name: "4.7kΩ 0402 Resistor", relationship: "associated" },
-    { type: "sku", id: "SKU000099", name: "100Ω 0805 Resistor", relationship: "associated" },
-  ],
-  "012345678901": [
-    { type: "sku", id: "SKU000012", name: "10kΩ 0402 Resistor (DigiKey)", relationship: "owned" },
-  ],
-  "LOT-2024-001": [
-    { type: "batch", id: "BAT000001", name: "DigiKey Order #123", relationship: "owned" },
-  ],
-};
 
 export interface FrontloadContext {
   api: ApiClient;
@@ -75,7 +55,7 @@ export class ApiClient {
   }
 
 
-  hydrate<T extends Sku | Batch>(server_rendered: T): T {
+  hydrate<T extends Sku | Batch | ProcessDefinition>(server_rendered: T): T {
     if (Object.getPrototypeOf(server_rendered) !== Object.prototype)
       return server_rendered;
     switch (server_rendered.kind) {
@@ -84,6 +64,9 @@ export class ApiClient {
       break;
     case "batch":
       Object.setPrototypeOf(server_rendered, Batch.prototype);
+      break;
+    case "process-definition":
+      Object.setPrototypeOf(server_rendered, ProcessDefinition.prototype);
       break;
     default:
         let _exhaustive_check: never; // eslint-disable-line
@@ -425,23 +408,70 @@ export class ApiClient {
   }
 
   // ===========================================================================
-  // Mock Code Label Methods
+  // Code Label Methods
   // ===========================================================================
 
   /**
-   * Look up which SKUs/batches use a given code (mock implementation)
-   * In production, this would hit /api/codes/{code}/usage
+   * Look up which SKUs/batches use a given code.
    */
   async getCodeUsage(code: string): Promise<CodeUsageResult> {
-    await new Promise(resolve => setTimeout(resolve, 40));
-
-    const usedBy = MOCK_CODE_USAGE[code] ?? [];
+    const resp = await this._fetch(
+      `${this.hostname}/api/codes/${encodeURIComponent(code)}/usage`,
+    );
+    if (!resp.ok) {
+      throw Error(`${this.hostname}/api/codes returned error status`);
+    }
+    const result = await resp.json();
 
     return {
+      ...result,
       kind: "code-usage-result",
-      code,
-      usedBy,
     };
+  }
+
+
+  async listProcessDefinitions(
+    query = ""
+  ): Promise<ProcessDefinitionState[] | Problem> {
+    const params = query ? `?${new URLSearchParams({ query }).toString()}` : "";
+    const resp = await this._fetch(
+      `${this.hostname}/api/process-definitions${params}`
+    );
+    const json = await resp.json();
+    if (resp.ok) return json.state;
+    return { ...json, kind: "problem" };
+  }
+
+
+  async getProcessDefinition(
+    id: string,
+    revision?: number
+  ): Promise<ProcessDefinition | Problem> {
+    const params = revision
+      ? `?${new URLSearchParams({ revision: String(revision) }).toString()}`
+      : "";
+    const resp = await this._fetch(
+      `${this.hostname}/api/process-definition/${id}${params}`
+    );
+    const json = await resp.json();
+    if (resp.ok) {
+      return new ProcessDefinition({ ...json, hostname: this.hostname });
+    }
+    return { ...json, kind: "problem" };
+  }
+
+
+  async createProcessDefinition(
+    definition: ProcessDefinitionWrite
+  ): Promise<Status | Problem> {
+    const resp = await this._fetch(`${this.hostname}/api/process-definitions`, {
+      method: "POST",
+      body: JSON.stringify(definition),
+      headers: { "Content-Type": "application/json" },
+    });
+    const json = await resp.json();
+    if (resp.ok) return { ...json, kind: "status" };
+    return { ...json, kind: "problem" };
   }
 
   // ===========================================================================

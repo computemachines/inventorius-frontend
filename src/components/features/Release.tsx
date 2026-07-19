@@ -10,6 +10,7 @@ import * as React from "react";
 import { useContext, useEffect, useState } from "react";
 
 import { ApiContext } from "../../api-client/api-client";
+import { normalizeInventoriusId } from "../../identifiers";
 import { ToastContext } from "../primitives/Toast";
 
 import "../../styles/form.css";
@@ -32,10 +33,10 @@ function Release() {
     const queryParams = parse(location.search);
 
     if (queryParams["from"]) {
-      setFromIdValue(queryParams["from"] as string);
+      setFromIdValue(normalizeInventoriusId(queryParams["from"] as string));
     }
     if (queryParams["item"]) {
-      setItemIdValue(queryParams["item"] as string);
+      setItemIdValue(normalizeInventoriusId(queryParams["item"] as string));
     }
     if (queryParams["quantity"]) {
       setQuantityValue(queryParams["quantity"] as string);
@@ -47,10 +48,12 @@ function Release() {
       className="form"
       onSubmit={async (e) => {
         e.preventDefault();
+        const canonicalFromId = normalizeInventoriusId(fromIdValue);
+        const canonicalItemId = normalizeInventoriusId(itemIdValue);
 
         const resp = await api.release({
-          from_id: fromIdValue,
-          item_id: itemIdValue,
+          from_id: canonicalFromId,
+          item_id: canonicalItemId,
           quantity: parseInt(quantityValue),
         });
         if (resp.kind == "status") {
@@ -59,10 +62,10 @@ function Release() {
               <div>
                 Success, Released {quantityValue} count,{" "}
                 <ItemLabel
-                  label={itemIdValue}
+                  label={canonicalItemId}
                   onClick={(e) => setAlertContent({})}
                 />
-                , from <ItemLabel label={fromIdValue} />
+                , from <ItemLabel label={canonicalFromId} />
               </div>
             ),
             mode: "success",
@@ -91,6 +94,7 @@ function Release() {
         name="from_id"
         value={fromIdValue}
         onChange={(e) => setFromIdValue(e.target.value)}
+        onBlur={() => setFromIdValue(normalizeInventoriusId(fromIdValue))}
       />
       <label htmlFor="item_id" className="form-label">
         Item Label
@@ -102,6 +106,7 @@ function Release() {
         className="form-single-code-input"
         value={itemIdValue}
         onChange={(e) => setItemIdValue(e.target.value)}
+        onBlur={() => setItemIdValue(normalizeInventoriusId(itemIdValue))}
       />
       <label htmlFor="quantity" className="form-label">
         Quantity

@@ -4,6 +4,7 @@ import { parse } from "query-string";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiContext } from "../../api-client/api-client";
+import { normalizeInventoriusId } from "../../identifiers";
 import CodesInput, { Code } from "../composites/CodesInput";
 import { ToastContext } from "../primitives/Toast";
 import ItemLabel from "../primitives/ItemLabel";
@@ -12,10 +13,6 @@ const labelClasses =
   "block text-[0.85rem] font-semibold text-[#04151f] uppercase tracking-wide mb-1.5";
 const inputClasses =
   "w-full rounded-md border border-[#cdd2d6] bg-white px-3 py-3 text-base text-[#04151f] focus:border-[#26532b] focus:outline-none focus:ring-2 focus:ring-[#26532b]/20";
-
-function normalizeBinId(value: string): string {
-  return value.trim().toUpperCase();
-}
 
 export default function QuickCapture() {
   const location = useLocation();
@@ -38,7 +35,7 @@ export default function QuickCapture() {
   useEffect(() => {
     const query = parse(location.search);
     const initialBin =
-      typeof query.into === "string" ? normalizeBinId(query.into) : "";
+      typeof query.into === "string" ? normalizeInventoriusId(query.into) : "";
     setBinId(initialBin);
     requestAnimationFrame(() => {
       (initialBin ? descriptionInput : binInput).current?.focus();
@@ -49,7 +46,7 @@ export default function QuickCapture() {
     event.preventDefault();
     setValidationError("");
 
-    const destination = normalizeBinId(binId);
+    const destination = normalizeInventoriusId(binId);
     const summary = description.trim();
     const count = Number(quantity);
 
@@ -148,7 +145,7 @@ export default function QuickCapture() {
         id="capture-bin"
         value={binId}
         onChange={(event) => setBinId(event.target.value)}
-        onBlur={() => setBinId(normalizeBinId(binId))}
+        onBlur={() => setBinId(normalizeInventoriusId(binId))}
         placeholder="BIN000001"
         spellCheck={false}
         className={`${inputClasses} mb-5`}

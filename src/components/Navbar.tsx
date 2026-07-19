@@ -43,7 +43,13 @@ function Navbar({
         <NavLink className="navlink" to="/new/batch">
           Define Batch
         </NavLink>
+        <NavLink className="navlink" to="/processes/new">
+          Define Process
+        </NavLink>
       </NavlinkDropdown>
+      <NavLink className="navlink" to="/processes">
+        Manufacturing
+      </NavLink>
       <NavLink className="navlink" to="/move">
         Move
       </NavLink>
@@ -62,6 +68,9 @@ function Navbar({
         </NavLink>
         <NavLink className="navlink" to="/demo/schema">
           Schema Demo
+        </NavLink>
+        <NavLink className="navlink" to="/admin/settings">
+          Settings
         </NavLink>
       </NavlinkDropdown>
       <NavLink className="navlink" to="/search">

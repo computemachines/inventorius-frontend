@@ -9,7 +9,7 @@
 
 import * as React from "react";
 import { useEffect } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { useFrontload } from "react-frontload";
 import { ApiContext, FrontloadContext } from "../../api-client/api-client";
 import {
@@ -67,12 +67,10 @@ function SearchResultsTable({
 function SearchResults({
   query,
   page = 1,
-  unsetPage,
   limit = 20,
 }: {
   query: string;
   page?: number;
-  unsetPage?: () => void;
   limit?: number;
 }) {
   const startingFrom = (page - 1) * limit;
@@ -91,6 +89,7 @@ function SearchResults({
 
   const api = React.useContext(ApiContext);
   const navigate = useNavigate();
+  const location = useLocation();
   const [isLoading, setIsLoading] = React.useState(false);
 
   // Update search results when query changes.
@@ -118,9 +117,21 @@ function SearchResults({
     };
   }, [query, startingFrom, limit]);
 
+  const searchUrl = stringifyUrl({
+    url: "/search",
+    query: page == 1 ? { query: query.trim() } : { query: query.trim(), page },
+  });
+  const currentUrl = location.pathname + location.search;
+
+  // Keep typing transient. If a query remains useful for ten seconds, commit
+  // it to history so reload, sharing, and Back navigation reproduce it.
   useEffect(() => {
-    if (unsetPage && page != 1) unsetPage();
-  }, [query]);
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery || currentUrl == searchUrl) return;
+
+    const timer = window.setTimeout(() => navigate(searchUrl), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [query, page, currentUrl, searchUrl, navigate]);
 
   // -------- branching --------
 
@@ -133,7 +144,7 @@ function SearchResults({
   );
 
   return (
-    <div className="mb-6">
+    <div className="mt-6 mb-6">
       <div
         className="flex items-baseline justify-between text-dark-abyss italic
           border-b border-dark-abyss mb-1.5"
@@ -143,14 +154,11 @@ function SearchResults({
       <SearchResultsTable
         searchResults={data.searchResults}
         loading={isLoading}
-        onClickLink={() =>
-          navigate(
-            stringifyUrl({
-              url: "/search",
-              query: page == 1 ? { query } : { query, page },
-            }),
-          )
-        }
+        onClickLink={() => {
+          // The ItemLabel link performs the following navigation. Save the
+          // live query first only when it is not already the current URL.
+          if (currentUrl != searchUrl) navigate(searchUrl);
+        }}
       />
       <Pager
         currentPage={page}

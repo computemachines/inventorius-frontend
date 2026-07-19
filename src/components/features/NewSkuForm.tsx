@@ -5,7 +5,6 @@
 // Conversation:
 // > (no discussion yet)
 
-
 import * as React from "react";
 import { useContext, useState, useCallback } from "react";
 import { useFrontload } from "react-frontload";
@@ -16,8 +15,16 @@ import { useSchemaForm } from "../../hooks/useSchemaForm";
 import ItemLabel from "../primitives/ItemLabel";
 import PrintButton from "../composites/PrintButton";
 import FormSection from "../primitives/FormSection";
-import { CodesSection, CodeEntry, createEmptyCode } from "../composites/CodesSection";
-import { SchemaFieldList, labelClasses, inputClasses } from "../composites/SchemaFields";
+import {
+  CodesSection,
+  CodeEntry,
+  createEmptyCode,
+} from "../composites/CodesSection";
+import {
+  SchemaFieldList,
+  labelClasses,
+  inputClasses,
+} from "../composites/SchemaFields";
 
 /**
  * SKU creation form using the unified trigger schema system.
@@ -28,7 +35,7 @@ export function NewSkuForm() {
     "new-sku-schema",
     async ({ api }: FrontloadContext) => ({
       nextSku: await api.getNextSku(),
-    })
+    }),
   );
 
   const api = useContext(ApiContext);
@@ -44,8 +51,8 @@ export function NewSkuForm() {
   const skuIdPlaceholder = frontloadMeta.pending
     ? "Loading..."
     : frontloadMeta.error
-    ? "Error"
-    : data?.nextSku.state || "SKU000001";
+      ? "Error"
+      : data?.nextSku.state || "SKU000001";
 
   const resetForm = useCallback(async () => {
     setSkuId("");
@@ -68,7 +75,7 @@ export function NewSkuForm() {
     // Store active mixins for reference
     if (schema.activeMixins.length > 1) {
       (props as Record<string, unknown>)._mixins = schema.activeMixins.filter(
-        (m) => m !== "ItemTypeSelector"
+        (m) => m !== "ItemTypeSelector",
       );
     }
 
@@ -84,7 +91,8 @@ export function NewSkuForm() {
       name: (props.item_type as string) || "",
       props: Object.keys(props).length > 0 ? props : undefined,
       owned_codes: ownedCodes.length > 0 ? ownedCodes : undefined,
-      associated_codes: associatedCodes.length > 0 ? associatedCodes : undefined,
+      associated_codes:
+        associatedCodes.length > 0 ? associatedCodes : undefined,
     });
 
     if (resp.kind === "status") {
@@ -108,17 +116,27 @@ export function NewSkuForm() {
   };
 
   // Separate trigger field from other fields
-  const itemTypeField = schema.availableFields.find((f) => f.name === "item_type");
-  const otherFields = schema.availableFields.filter((f) => f.name !== "item_type");
+  const itemTypeField = schema.availableFields.find(
+    (f) => f.name === "item_type",
+  );
+  const otherFields = schema.availableFields.filter(
+    (f) => f.name !== "item_type",
+  );
 
   return (
-    <form className="max-w-[40rem] mx-auto" onSubmit={handleSubmit}>
-      <h2 className="text-2xl font-bold text-[#04151f] mb-6 pb-3 border-b-2 border-[#cdd2d6]">
+    <form onSubmit={handleSubmit}>
+      <h2
+        className="text-2xl font-bold text-[#04151f] mb-6 pb-3 border-b-2
+          border-[#cdd2d6]"
+      >
         New SKU
       </h2>
 
       {schema.error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <div
+          className="bg-red-100 border border-red-400 text-red-700 px-4 py-3
+            rounded mb-4"
+        >
           {schema.error}
         </div>
       )}
@@ -163,8 +181,14 @@ export function NewSkuForm() {
             entityType="sku"
           />
           {schema.activeMixins.length > 1 && (
-            <div className="mt-4 py-2 px-3 text-sm text-[#6d635d] bg-[#cdd2d6]/30 rounded inline-block">
-              Active: {schema.activeMixins.filter((m) => m !== "ItemTypeSelector").join(" → ")}
+            <div
+              className="mt-4 py-2 px-3 text-sm text-[#6d635d] bg-[#cdd2d6]/30
+                rounded inline-block"
+            >
+              Active:{" "}
+              {schema.activeMixins
+                .filter((m) => m !== "ItemTypeSelector")
+                .join(" → ")}
             </div>
           )}
         </FormSection>
@@ -177,21 +201,28 @@ export function NewSkuForm() {
       <div className="flex gap-3 mt-8 pt-6 border-t border-[#cdd2d6]">
         <button
           type="submit"
-          className="flex-1 py-3 px-6 text-base font-semibold bg-[#26532b] text-white rounded-md hover:bg-[#1e4423] active:scale-[0.98] transition-all cursor-pointer"
+          className="flex-1 py-3 px-6 text-base font-semibold bg-[#26532b]
+            text-white rounded-md hover:bg-[#1e4423] active:scale-[0.98]
+            transition-all cursor-pointer"
         >
           Create SKU
         </button>
         <button
           type="button"
           onClick={resetForm}
-          className="py-3 px-5 text-base font-medium bg-transparent text-[#6d635d] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] hover:text-[#04151f] transition-colors cursor-pointer"
+          className="py-3 px-5 text-base font-medium bg-transparent
+            text-[#6d635d] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6]
+            hover:text-[#04151f] transition-colors cursor-pointer"
         >
           Reset
         </button>
       </div>
 
       {schema.loading && (
-        <div className="fixed bottom-4 right-4 bg-[#082441] text-white px-4 py-2 rounded-lg shadow-lg">
+        <div
+          className="fixed bottom-4 right-4 bg-[#082441] text-white px-4 py-2
+            rounded-lg shadow-lg"
+        >
           Loading...
         </div>
       )}

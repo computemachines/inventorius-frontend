@@ -23,6 +23,13 @@ async function status_or_problem(
   resp_promise: Promise<Response>
 ): Promise<Status | Problem> {
   const resp = await resp_promise;
+
+  // DELETE endpoints correctly return 204 with no response body. Do not ask
+  // the Fetch API to parse absent JSON as though the operation had failed.
+  if (resp.ok && resp.status === 204) {
+    return { kind: "status", status: "operation completed" };
+  }
+
   const json = await resp.json();
   if (resp.ok) {
     return { ...json, kind: "status" };
@@ -57,7 +64,7 @@ export interface Status {
   /**
    * URI of the newly created resource.
    */
-  Id: string;
+  Id?: string;
   /**
    * Human readable status string.
    */
@@ -276,6 +283,76 @@ export class Batch extends RestEndpoint {
     const json = await resp.json();
     if (resp.ok) return { ...json, kind: "batch-locations" };
     else return { ...json, kind: "problem" };
+  }
+}
+
+export type ProcessDefinitionKind =
+  | "repackaging"
+  | "assembly"
+  | "disassembly"
+  | "transformation"
+  | "blending";
+
+export interface ProcessRequirement {
+  role: string;
+  sku_id?: string;
+  quantity?: number;
+  unit: string;
+}
+
+export interface ProcessDefinitionWrite {
+  name: string;
+  kind: ProcessDefinitionKind;
+  description?: string;
+  inputs: ProcessRequirement[];
+  outputs: ProcessRequirement[];
+  instructions?: string[];
+}
+
+export interface ProcessDefinitionState extends ProcessDefinitionWrite {
+  id: string;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  is_current: boolean;
+}
+
+export class ProcessDefinition extends RestEndpoint {
+  kind: "process-definition" = "process-definition";
+  state: ProcessDefinitionState;
+  operations: {
+    update?: CallableRestOperation;
+    delete?: CallableRestOperation;
+    revisions: CallableRestOperation;
+  };
+
+  update(patch: Partial<ProcessDefinitionWrite>): Promise<Status | Problem> {
+    if (!this.operations.update) {
+      return Promise.resolve({
+        kind: "problem",
+        type: "historical-revision",
+        title: "Historical process revisions cannot be edited.",
+      });
+    }
+    return status_or_problem(this.operations.update.perform({ json: patch }));
+  }
+
+  delete(): Promise<Status | Problem> {
+    if (!this.operations.delete) {
+      return Promise.resolve({
+        kind: "problem",
+        type: "historical-revision",
+        title: "Historical process revisions cannot be deleted.",
+      });
+    }
+    return status_or_problem(this.operations.delete.perform());
+  }
+
+  async revisions(): Promise<ProcessDefinitionState[] | Problem> {
+    const response = await this.operations.revisions.perform();
+    const json = await response.json();
+    if (response.ok) return json.state;
+    return { ...json, kind: "problem" };
   }
 }
 

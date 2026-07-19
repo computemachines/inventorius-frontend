@@ -9,6 +9,7 @@
 import * as React from "react";
 import { useState, useContext } from "react";
 import { ApiContext } from "../../api-client/api-client";
+import { normalizeInventoriusId } from "../../identifiers";
 
 import "../../styles/form.css";
 import { ToastContext } from "../primitives/Toast";
@@ -29,12 +30,15 @@ export default function MoveItem() {
       className="form"
       onSubmit={async (e) => {
         e.preventDefault();
+        const canonicalItemId = normalizeInventoriusId(itemId);
+        const canonicalFromId = normalizeInventoriusId(fromId);
+        const canonicalToId = normalizeInventoriusId(toId);
 
         const resp = await api.move({
-          from_id: fromId,
-          to_id: toId,
+          from_id: canonicalFromId,
+          to_id: canonicalToId,
           quantity: parseInt(quantity),
-          item_id: itemId,
+          item_id: canonicalItemId,
         });
 
         if (resp.kind == "problem") {
@@ -52,9 +56,9 @@ export default function MoveItem() {
             content: (
               <div>
                 Success. Moved {quantity} count,
-                <ItemLabel label={itemId} onClick={clearAlert} /> from{" "}
-                <ItemLabel label={fromId} onClick={clearAlert} /> to{" "}
-                <ItemLabel label={toId} onClick={clearAlert} />
+                <ItemLabel label={canonicalItemId} onClick={clearAlert} /> from{" "}
+                <ItemLabel label={canonicalFromId} onClick={clearAlert} /> to{" "}
+                <ItemLabel label={canonicalToId} onClick={clearAlert} />
               </div>
             ),
           });
@@ -72,6 +76,7 @@ export default function MoveItem() {
         name="item_id"
         value={itemId}
         onChange={(e) => setItemId(e.target.value)}
+        onBlur={() => setItemId(normalizeInventoriusId(itemId))}
       />
 
       <label htmlFor="from_id" className="form-label">
@@ -84,6 +89,7 @@ export default function MoveItem() {
         type="text"
         value={fromId}
         onChange={(e) => setFromId(e.target.value)}
+        onBlur={() => setFromId(normalizeInventoriusId(fromId))}
       />
 
       <label htmlFor="to_id" className="form-label">
@@ -96,6 +102,7 @@ export default function MoveItem() {
         type="text"
         value={toId}
         onChange={(e) => setToId(e.target.value)}
+        onBlur={() => setToId(normalizeInventoriusId(toId))}
       />
 
       <label htmlFor="quantity" className="form-label">

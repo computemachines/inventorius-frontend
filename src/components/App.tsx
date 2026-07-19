@@ -30,7 +30,11 @@ import Release from "./features/Release";
 import Audit from "./features/Audit";
 import SchemaDemo from "./features/SchemaDemo";
 import SchemaAdmin from "./features/SchemaAdmin";
+import AdminSettings from "./features/AdminSettings";
 import QuickCapture from "./features/QuickCapture";
+import NewProcessDefinition from "./features/NewProcessDefinition";
+import ProcessDefinition from "./features/ProcessDefinition";
+import ProcessDefinitionList from "./features/ProcessDefinitionList";
 
 /**
  * Main app component
@@ -70,6 +74,10 @@ function App() {
                 <Route path="/new/bin" element={<NewBin />} />
                 <Route path="/new/sku" element={<NewSkuForm />} />
                 <Route path="/new/batch" element={<NewBatchForm />} />
+                <Route path="/processes/new" element={<NewProcessDefinition />} />
+                <Route path="/processes/:id/edit" element={<ProcessDefinition editable />} />
+                <Route path="/processes/:id" element={<ProcessDefinition />} />
+                <Route path="/processes" element={<ProcessDefinitionList />} />
                 <Route path="/bin/:id" element={<Bin />} />
                 <Route path="/sku/:id/edit" element={<Sku editable />} />
                 <Route path="/sku/:id" element={<Sku />} />
@@ -84,6 +92,7 @@ function App() {
                 <Route path="/legal" element={<EULA />} />
                 <Route path="/demo/schema" element={<SchemaDemo />} />
                 <Route path="/admin/schema" element={<SchemaAdmin />} />
+                <Route path="/admin/settings" element={<AdminSettings />} />
                 <Route path="*" element={<FourOhFour />} />
               </Routes>
             </ToastContext.Provider>
