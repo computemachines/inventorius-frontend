@@ -9,5 +9,6 @@ coverage/
 stats.json
 docs
 package-root
+.playwright-mcp/
 *secrets*
 !*.gpg

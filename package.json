@@ -9,8 +9,7 @@
     "build:server": "cross-env NODE_ENV=production webpack --config webpack.server.config.js",
     "build:server:dev": "webpack --config webpack.server.config.js",
     "server:dev": "node dist/server.bundle.js -p 8080 --dev",
-    "server:only": "node dist/server.bundle.js -p 8080 --dev --noclient",
-    "test": "jest"
+    "server:only": "node dist/server.bundle.js -p 8080 --dev --noclient"
   },
   "repository": {
     "type": "git",
