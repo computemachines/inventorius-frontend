@@ -99,16 +99,17 @@ export class ApiClient {
 
   async quickCapture(params: {
     description: string;
-    owned_codes?: string[];
-    associated_codes?: string[];
     bin_id: string;
     quantity: number;
-  }): Promise<CaptureResult | Problem> {
+    unit: "each";
+    observed_codes?: string[];
+  }, idempotencyKey: string): Promise<CaptureResult | Problem> {
     const resp = await this._fetch(`${this.hostname}/api/intake`, {
       method: "POST",
       body: JSON.stringify(params),
       headers: {
         "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
       },
     });
     const json = await resp.json();

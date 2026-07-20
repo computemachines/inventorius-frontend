@@ -14,6 +14,25 @@ const labelClasses =
 const inputClasses =
   "w-full rounded-md border border-[#cdd2d6] bg-white px-3 py-3 text-base text-[#04151f] focus:border-[#26532b] focus:outline-none focus:ring-2 focus:ring-[#26532b]/20";
 
+function createIdempotencyKey() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+}
+
 export default function QuickCapture() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -31,6 +50,7 @@ export default function QuickCapture() {
 
   const descriptionInput = useRef<HTMLInputElement>(null);
   const binInput = useRef<HTMLInputElement>(null);
+  const pendingCapture = useRef<{ payload: string; idempotencyKey: string } | null>(null);
 
   useEffect(() => {
     const query = parse(location.search);
@@ -67,21 +87,27 @@ export default function QuickCapture() {
 
     setSubmitting(true);
     try {
-      const ownedCodes = codes
-        .filter(({ kind, value }) => kind === "owned" && value.trim())
-        .map(({ value }) => value.trim());
-      const associatedCodes = codes
-        .filter(({ kind, value }) => kind === "associated" && value.trim())
-        .map(({ value }) => value.trim());
-      const response = await api.quickCapture({
+      const observedCodes = Array.from(
+        new Set(codes.map(({ value }) => value.trim()).filter(Boolean))
+      ).sort();
+      const payload = {
         description: summary,
-        ...(ownedCodes.length ? { owned_codes: ownedCodes } : {}),
-        ...(associatedCodes.length
-          ? { associated_codes: associatedCodes }
-          : {}),
         bin_id: destination,
         quantity: count,
-      });
+        unit: "each" as const,
+        ...(observedCodes.length ? { observed_codes: observedCodes } : {}),
+      };
+      const serializedPayload = JSON.stringify(payload);
+      if (pendingCapture.current?.payload !== serializedPayload) {
+        pendingCapture.current = {
+          payload: serializedPayload,
+          idempotencyKey: createIdempotencyKey(),
+        };
+      }
+      const response = await api.quickCapture(
+        payload,
+        pendingCapture.current.idempotencyKey
+      );
 
       if (response.kind === "problem") {
         setValidationError(response.title);
@@ -91,9 +117,9 @@ export default function QuickCapture() {
       setToastContent({
         content: (
           <p>
-            Captured {count} × {summary} as{" "}
+            Captured {response.state.quantity} × {response.state.description} as{" "}
             <ItemLabel label={response.state.sku_id} /> in{" "}
-            <ItemLabel label={destination} />.
+            <ItemLabel label={response.state.bin_id} />.
           </p>
         ),
         mode: "success",
@@ -105,6 +131,7 @@ export default function QuickCapture() {
       setDescription("");
       setCodes([{ kind: "owned", value: "" }]);
       setQuantity("1");
+      pendingCapture.current = null;
       navigate(`/capture?into=${encodeURIComponent(destination)}`, {
         replace: true,
       });
@@ -165,11 +192,16 @@ export default function QuickCapture() {
         className={`${inputClasses} mb-5`}
       />
 
-      <label className={labelClasses}>
-        Codes (optional)
+      <label htmlFor="capture-observed-codes" className={labelClasses}>
+        Observed codes (optional)
       </label>
       <div className="mb-5">
-        <CodesInput codes={codes} setCodes={setCodes} />
+        <CodesInput
+          id="capture-observed-codes"
+          codes={codes}
+          setCodes={setCodes}
+          showRelationshipControls={false}
+        />
       </div>
 
       <label htmlFor="capture-quantity" className={labelClasses}>

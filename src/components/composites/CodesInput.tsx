@@ -50,12 +50,14 @@ function CodeInput({
   code,
   setCode,
   onKeyDown,
+  showRelationshipControls,
   children,
 }: {
   id?: string;
   code: Code;
   setCode: (code: Code) => void;
   onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>;
+  showRelationshipControls: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -70,10 +72,12 @@ function CodeInput({
         }}
         onKeyDown={onKeyDown}
       />
-      <BadgeRocker
-        state={code.kind}
-        setState={(state) => setCode({ ...code, kind: state })}
-      />
+      {showRelationshipControls && (
+        <BadgeRocker
+          state={code.kind}
+          setState={(state) => setCode({ ...code, kind: state })}
+        />
+      )}
       {children}
     </div>
   );
@@ -100,18 +104,23 @@ function CodesInput({
   codes,
   editable = true,
   setCodes,
+  showRelationshipControls = true,
 }: {
   id?: string;
   codes: Code[];
   editable?: boolean;
   setCodes?: (codes: Code[]) => void;
+  /** Hide ownership controls when scanned values are observational evidence. */
+  showRelationshipControls?: boolean;
 }) {
   function editableCodeLine(code, i, codes) {
     const isLast = i + 1 == codes.length;
     return (
       <CodeInput
         key={i}
+        id={i === 0 ? id : undefined}
         code={code}
+        showRelationshipControls={showRelationshipControls}
         setCode={(code) => {
           const newCodes = [...codes];
           newCodes[i] = code;

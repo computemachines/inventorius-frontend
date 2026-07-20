@@ -74,11 +74,13 @@ export interface Status {
 export interface CaptureResult extends Status {
   state: {
     sku_id: string;
+    batch_id: string;
+    operation_id: string;
     bin_id: string;
     quantity: number;
+    unit: "each";
     description: string;
-    owned_codes: string[];
-    associated_codes: string[];
+    observed_codes: string[];
     provisional: true;
   };
 }
