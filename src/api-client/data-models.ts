@@ -71,19 +71,49 @@ export interface Status {
   status: string;
 }
 
+interface IntakeState {
+  sku_id: string;
+  batch_id: string;
+  operation_id: string;
+  bin_id: string;
+  quantity: number;
+  unit: "each";
+  observed_codes: string[];
+  provisional: true;
+}
+
+/** The Quick Capture branch allocated a provisional SKU from its description. */
 export interface CaptureResult extends Status {
-  state: {
-    sku_id: string;
-    batch_id: string;
-    operation_id: string;
-    bin_id: string;
-    quantity: number;
-    unit: "each";
+  state: IntakeState & {
     description: string;
-    observed_codes: string[];
-    provisional: true;
+    created_sku: true;
   };
 }
+
+/** The Receive branch created a new batch under an explicitly selected SKU. */
+export interface ExistingSkuIntakeResult extends Status {
+  state: IntakeState & {
+    created_sku: false;
+  };
+}
+
+export type IntakeResult = CaptureResult | ExistingSkuIntakeResult;
+
+export type IntakeRequest =
+  | {
+      description: string;
+      bin_id: string;
+      quantity: number;
+      unit: "each";
+      observed_codes?: string[];
+    }
+  | {
+      sku_id: string;
+      bin_id: string;
+      quantity: number;
+      unit: "each";
+      observed_codes?: string[];
+    };
 
 /**
  * A constrained inventory command submitted by a scanner-facing workflow.
@@ -94,7 +124,15 @@ export interface CaptureResult extends Status {
  */
 export type InventoryOperationCommand =
   | {
-      kind: "receive" | "release";
+      kind: "receive";
+      batch_id: string;
+      quantity: number;
+      unit: "each";
+      location_id: string;
+      observed_codes?: string[];
+    }
+  | {
+      kind: "release";
       batch_id: string;
       quantity: number;
       unit: "each";
@@ -120,12 +158,13 @@ export interface InventoryOperationResult extends Status {
     location_id?: string;
     source_location_id?: string;
     destination_location_id?: string;
+    observed_codes?: string[];
   };
 }
 
 export interface InventoryCandidateMatch {
   evidence: string;
-  kind: "batch-id" | "code" | "text";
+  kind: "batch-id" | "sku-id" | "code" | "text";
   scope: "batch" | "sku";
   relationship: "identity" | "owned" | "associated" | "observed" | "name";
   resource_id: string;
@@ -175,6 +214,36 @@ export interface InventoryCandidateContextMismatch {
   reason: "not-at-location" | "unsupported-holding-shape";
 }
 
+export interface InventorySkuCandidate {
+  sku_id: string;
+  sku_name: string | null;
+  matches: InventoryCandidateMatch[];
+}
+
+export interface InventorySkuEvidenceConflict {
+  kind: "sku-evidence-conflict";
+  evidence: string[];
+  candidate_sets: Array<{
+    evidence: string;
+    total_num_candidates: number;
+    sku_ids: string[];
+  }>;
+}
+
+export interface InventorySkuCandidatesState {
+  status: "unknown" | "identified" | "candidates" | "conflict";
+  resolution: "none" | "unique" | "ambiguous";
+  total_num_results: number;
+  limit: number;
+  starting_from: number;
+  returned_num_results: number;
+  truncated: boolean;
+  results: InventorySkuCandidate[];
+  conflicts: Array<InventorySkuEvidenceConflict | InventoryOwnedCodeConflict>;
+  /** Resolver input that did not identify a SKU directly; it is not durable observation evidence. */
+  unmatched_evidence: string[];
+}
+
 /**
  * Contextual inventory identity resolution.
  *
@@ -195,6 +264,8 @@ export interface InventoryCandidatesResult {
     truncated: boolean;
     results: InventoryCandidate[];
     conflicts: InventoryCandidateConflict[];
+    /** Context-free SKU resolution for explicitly creating a new batch. */
+    sku_candidates: InventorySkuCandidatesState;
     total_context_mismatches: number;
     context_mismatches: InventoryCandidateContextMismatch[];
   };

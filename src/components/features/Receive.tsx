@@ -1,20 +1,31 @@
 import * as React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
 import { parse } from "query-string";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { ApiContext } from "../../api-client/api-client";
 import { normalizeInventoriusId } from "../../identifiers";
+import { Code } from "../composites/CodesInput";
+import InventoryBatchSelector from "../composites/InventoryBatchSelector";
 import ItemLabel from "../primitives/ItemLabel";
 import { ToastContext } from "../primitives/Toast";
 import {
   inputClasses,
   isBatchId,
   isBinId,
+  isSkuId,
   labelClasses,
   submitClasses,
   useCommandIdempotency,
 } from "./inventory-operation-form";
+
+const emptyEvidence: Code[] = [{ value: "", kind: "associated" }];
+
+function dedupedObservedCodes(evidence: Code[]): string[] {
+  return Array.from(
+    new Set(evidence.map(({ value }) => value.trim()).filter(Boolean)),
+  ).sort();
+}
 
 export default function Receive() {
   const location = useLocation();
@@ -24,13 +35,17 @@ export default function Receive() {
   const idempotency = useCommandIdempotency();
 
   const [binId, setBinId] = useState("");
-  const [batchId, setBatchId] = useState("");
+  const [itemEvidence, setItemEvidence] = useState<Code[]>(emptyEvidence);
+  const [selectedBatchId, setSelectedBatchId] = useState("");
+  const [selectedSkuId, setSelectedSkuId] = useState("");
+  const [observedEvidence, setObservedEvidence] =
+    useState<Code[]>(emptyEvidence);
   const [quantity, setQuantity] = useState("1");
   const [validationError, setValidationError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const binInput = useRef<HTMLInputElement>(null);
-  const batchInput = useRef<HTMLInputElement>(null);
+  const itemEvidenceInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const query = parse(location.search);
@@ -44,10 +59,14 @@ export default function Receive() {
       typeof query.quantity === "string" ? query.quantity : "1";
 
     setBinId(initialBin);
-    setBatchId(initialBatch);
+    // A batch deep-link is scanner evidence, not a bypass around resolution.
+    setItemEvidence([{ value: initialBatch, kind: "associated" }]);
+    setSelectedBatchId("");
+    setSelectedSkuId("");
+    setObservedEvidence(emptyEvidence);
     setQuantity(initialQuantity);
     requestAnimationFrame(() => {
-      (initialBin ? batchInput : binInput).current?.focus();
+      (initialBin ? itemEvidenceInput : binInput).current?.focus();
     });
   }, [location.search]);
 
@@ -55,18 +74,21 @@ export default function Receive() {
     event.preventDefault();
     setValidationError("");
 
-    const locationId = normalizeInventoriusId(binId);
-    const canonicalBatchId = normalizeInventoriusId(batchId);
+    const destination = normalizeInventoriusId(binId);
     const count = Number(quantity);
-
-    if (!isBinId(locationId)) {
-      setValidationError("Scan or enter a BIN label.");
+    const chosenBatchId = selectedBatchId;
+    const chosenSkuId = selectedSkuId;
+    const observedCodes = dedupedObservedCodes(observedEvidence);
+    if (!isBinId(destination)) {
+      setValidationError("Scan or enter a destination BIN label.");
       binInput.current?.focus();
       return;
     }
-    if (!isBatchId(canonicalBatchId)) {
-      setValidationError("Receive operations require a BAT label.");
-      batchInput.current?.focus();
+    if (!isBatchId(chosenBatchId) && !isSkuId(chosenSkuId)) {
+      setValidationError(
+        "Wait for the item to resolve, then choose an existing batch or a SKU for a new batch.",
+      );
+      itemEvidenceInput.current?.focus();
       return;
     }
     if (!Number.isInteger(count) || count < 1) {
@@ -74,53 +96,88 @@ export default function Receive() {
       return;
     }
 
-    const command = {
-      kind: "receive" as const,
-      batch_id: canonicalBatchId,
-      quantity: count,
-      unit: "each" as const,
-      location_id: locationId,
-    };
-
     setSubmitting(true);
     try {
-      const response = await api.postInventoryOperation(
-        command,
-        idempotency.keyFor(command),
-      );
-      if (response.kind === "problem") {
-        setValidationError(response.title);
-        return;
+      if (isBatchId(chosenBatchId)) {
+        const command = {
+          kind: "receive" as const,
+          batch_id: chosenBatchId,
+          quantity: count,
+          unit: "each" as const,
+          location_id: destination,
+          ...(observedCodes.length ? { observed_codes: observedCodes } : {}),
+        };
+        const response = await api.postInventoryOperation(
+          command,
+          idempotency.keyFor(command),
+        );
+        if (response.kind === "problem") {
+          setValidationError(response.title);
+          return;
+        }
+
+        setToastContent({
+          content: (
+            <p>
+              Received {count} × <ItemLabel label={chosenBatchId} /> into{" "}
+              <ItemLabel label={destination} />.
+            </p>
+          ),
+          mode: "success",
+        });
+      } else {
+        const payload = {
+          sku_id: chosenSkuId,
+          bin_id: destination,
+          quantity: count,
+          unit: "each" as const,
+          ...(observedCodes.length ? { observed_codes: observedCodes } : {}),
+        };
+        const response = await api.intake(payload, idempotency.keyFor(payload));
+        if (response.kind === "problem") {
+          setValidationError(response.title);
+          return;
+        }
+
+        setToastContent({
+          content: (
+            <p>
+              Received {count} × new <ItemLabel label={response.state.batch_id} />
+              {" under "}<ItemLabel label={chosenSkuId} /> into{" "}
+              <ItemLabel label={destination} />.
+            </p>
+          ),
+          mode: "success",
+        });
       }
 
-      setToastContent({
-        content: (
-          <p>
-            Received {count} × <ItemLabel label={canonicalBatchId} /> into{" "}
-            <ItemLabel label={locationId} />.
-          </p>
-        ),
-        mode: "success",
-      });
-
-      // One receiving session usually has one physical destination.
+      // Keep one physical destination, but only discard a command after its
+      // response confirms success. Failed/lost responses retain this exact
+      // payload and key for a safe retry.
       idempotency.clear();
-      setBinId(locationId);
-      setBatchId("");
+      setBinId(destination);
+      setItemEvidence(emptyEvidence);
+      setSelectedBatchId("");
+      setSelectedSkuId("");
+      setObservedEvidence(emptyEvidence);
       setQuantity("1");
-      navigate(`/receive?into=${encodeURIComponent(locationId)}`, {
+      navigate(`/receive?into=${encodeURIComponent(destination)}`, {
         replace: true,
       });
-      requestAnimationFrame(() => batchInput.current?.focus());
+      requestAnimationFrame(() => itemEvidenceInput.current?.focus());
     } catch {
       setValidationError(
         "Could not submit the receipt. Check the API and retry.",
       );
-      batchInput.current?.focus();
+      itemEvidenceInput.current?.focus();
     } finally {
       setSubmitting(false);
     }
   };
+
+  const captureHref = isBinId(normalizeInventoriusId(binId))
+    ? `/capture?into=${encodeURIComponent(normalizeInventoriusId(binId))}`
+    : "/capture";
 
   return (
     <form
@@ -132,8 +189,8 @@ export default function Receive() {
         Receive inventory
       </h2>
       <p className="text-[#6d635d] mb-6">
-        Record a known batch arriving in a bin. Use Quick Capture for a new,
-        unlabeled object.
+        Scan an existing batch, or explicitly choose a SKU when this arriving
+        object needs a new batch. If it is unknown, use Quick Capture.
       </p>
 
       {validationError && (
@@ -160,18 +217,22 @@ export default function Receive() {
         className={`${inputClasses} mb-5`}
       />
 
-      <label htmlFor="receive-batch" className={labelClasses}>
-        Batch
-      </label>
-      <input
-        ref={batchInput}
-        id="receive-batch"
-        value={batchId}
-        onChange={(event) => setBatchId(event.target.value)}
-        onBlur={() => setBatchId(normalizeInventoriusId(batchId))}
-        placeholder="BAT000001"
-        spellCheck={false}
-        className={`${inputClasses} mb-5`}
+      <InventoryBatchSelector
+        id="receive-item-evidence"
+        firstInputRef={itemEvidenceInput}
+        evidence={itemEvidence}
+        setEvidence={setItemEvidence}
+        selectedBatchId={selectedBatchId}
+        setSelectedBatchId={setSelectedBatchId}
+        selectedSkuId={selectedSkuId}
+        setSelectedSkuId={setSelectedSkuId}
+        observedEvidence={observedEvidence}
+        setObservedEvidence={setObservedEvidence}
+        unknownAction={
+          <Link className="font-semibold underline" to={captureHref}>
+            Use Quick Capture instead.
+          </Link>
+        }
       />
 
       <label htmlFor="receive-quantity" className={labelClasses}>
@@ -189,7 +250,7 @@ export default function Receive() {
       />
 
       <button type="submit" disabled={submitting} className={submitClasses}>
-        {submitting ? "Receiving…" : "Receive batch"}
+        {submitting ? "Receiving…" : "Receive inventory"}
       </button>
     </form>
   );

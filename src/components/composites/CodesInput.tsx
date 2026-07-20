@@ -116,6 +116,7 @@ function CodesInput({
   editable = true,
   setCodes,
   showRelationshipControls = true,
+  allowMultiple = true,
 }: {
   id?: string;
   firstInputRef?: React.Ref<HTMLInputElement>;
@@ -128,6 +129,8 @@ function CodesInput({
   setCodes?: (codes: Code[]) => void;
   /** Hide ownership controls when scanned values are observational evidence. */
   showRelationshipControls?: boolean;
+  /** Disable row creation/removal and let Tab leave this ordinary input. */
+  allowMultiple?: boolean;
 }) {
   function editableCodeLine(code, i, codes) {
     const isLast = i + 1 == codes.length;
@@ -146,7 +149,7 @@ function CodesInput({
           setCodes(newCodes);
         }}
         onKeyDown={
-          i == codes.length - 1
+          allowMultiple && i == codes.length - 1
             ? (e) => {
                 if (e.key == "Tab" && !e.shiftKey && code.value) {
                   setCodes([...codes, { value: "", kind: "owned" }]);
@@ -155,29 +158,35 @@ function CodesInput({
             : null
         }
       >
-        {i < codes.length - 1 ? (
-          <Cross
-            className="lnr-cross-circle"
-            onClick={(e) => {
-              const newCodes = [...codes];
-              newCodes.splice(i, 1);
-              setCodes(newCodes);
-            }}
-          />
-        ) : (
-          <PlusCircle
-            className="lnr-plus-circle"
-            onClick={(e) => setCodes([...codes, { value: "", kind: "owned" }])}
-          />
-        )}
+        {allowMultiple &&
+          (i < codes.length - 1 ? (
+            <Cross
+              className="lnr-cross-circle"
+              onClick={(e) => {
+                const newCodes = [...codes];
+                newCodes.splice(i, 1);
+                setCodes(newCodes);
+              }}
+            />
+          ) : (
+            <PlusCircle
+              className="lnr-plus-circle"
+              onClick={(e) =>
+                setCodes([...codes, { value: "", kind: "owned" }])
+              }
+            />
+          ))}
       </CodeInput>
     );
   }
   const defaultCode: Code = { kind: "owned", value: "" };
   if (editable) {
+    const editableCodes = codes.length == 0 ? [defaultCode] : codes;
     return (
       <div className="code-lines">
-        {(codes.length == 0 ? [defaultCode] : codes).map(editableCodeLine)}
+        {(allowMultiple ? editableCodes : editableCodes.slice(0, 1)).map(
+          editableCodeLine,
+        )}
       </div>
     );
   } else {

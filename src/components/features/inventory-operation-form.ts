@@ -17,6 +17,10 @@ export function isBatchId(value: string): boolean {
   return /^BAT\d{6}$/.test(value);
 }
 
+export function isSkuId(value: string): boolean {
+  return /^SKU\d{6}$/.test(value);
+}
+
 function createIdempotencyKey(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();

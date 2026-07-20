@@ -19,6 +19,8 @@ import {
   BundleLookupResult,
   BundleContext,
   CaptureResult,
+  IntakeRequest,
+  IntakeResult,
   InventoryOperationCommand,
   InventoryOperationResult,
   InventoryCandidatesResult,
@@ -100,13 +102,14 @@ export class ApiClient {
   }
 
 
-  async quickCapture(params: {
-    description: string;
-    bin_id: string;
-    quantity: number;
-    unit: "each";
-    observed_codes?: string[];
-  }, idempotencyKey: string): Promise<CaptureResult | Problem> {
+  /**
+   * Intake either captures an unknown item or receives a deliberately chosen
+   * new batch under an existing SKU. Both paths share one idempotent command.
+   */
+  async intake(
+    params: IntakeRequest,
+    idempotencyKey: string,
+  ): Promise<IntakeResult | Problem> {
     const resp = await this._fetch(`${this.hostname}/api/intake`, {
       method: "POST",
       body: JSON.stringify(params),
@@ -264,6 +267,18 @@ export class ApiClient {
     const json = await resp.json();
     if (resp.ok) return { ...json, kind: "status" };
     return { ...json, kind: "problem" };
+  }
+
+
+  /** Backwards-compatible name for Quick Capture callers. */
+  async quickCapture(
+    params: Extract<IntakeRequest, { description: string }>,
+    idempotencyKey: string,
+  ): Promise<CaptureResult | Problem> {
+    const response = await this.intake(params, idempotencyKey);
+    // The `description` request branch is guaranteed by the intake contract
+    // to allocate a SKU, and therefore has the CaptureResult response shape.
+    return response.kind === "problem" ? response : (response as CaptureResult);
   }
 
 
