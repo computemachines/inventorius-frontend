@@ -21,6 +21,7 @@ import {
   CaptureResult,
   InventoryOperationCommand,
   InventoryOperationResult,
+  InventoryCandidatesResult,
   ProcessDefinition,
   ProcessDefinitionState,
   ProcessDefinitionWrite,
@@ -262,6 +263,31 @@ export class ApiClient {
     });
     const json = await resp.json();
     if (resp.ok) return { ...json, kind: "status" };
+    return { ...json, kind: "problem" };
+  }
+
+
+  async getInventoryCandidates({
+    evidence,
+    sourceLocationId,
+    signal,
+  }: {
+    evidence: string[];
+    sourceLocationId?: string;
+    signal?: AbortSignal;
+  }): Promise<InventoryCandidatesResult | Problem> {
+    const params = new URLSearchParams();
+    for (const value of evidence) params.append("evidence", value);
+    if (sourceLocationId) {
+      params.set("source_location_id", sourceLocationId);
+    }
+
+    const resp = await this._fetch(
+      `${this.hostname}/api/inventory-candidates?${params.toString()}`,
+      { signal },
+    );
+    const json = await resp.json();
+    if (resp.ok) return { ...json, kind: "inventory-candidates" };
     return { ...json, kind: "problem" };
   }
 

@@ -123,6 +123,83 @@ export interface InventoryOperationResult extends Status {
   };
 }
 
+export interface InventoryCandidateMatch {
+  evidence: string;
+  kind: "batch-id" | "code" | "text";
+  scope: "batch" | "sku";
+  relationship: "identity" | "owned" | "associated" | "observed" | "name";
+  resource_id: string;
+  value: string;
+}
+
+export interface InventoryCandidate {
+  batch_id: string;
+  sku_id: string | null;
+  batch_name: string | null;
+  sku_name: string | null;
+  available_quantity: number | string | null;
+  unit: "each";
+  packaging_configuration_id: null;
+  matches: InventoryCandidateMatch[];
+}
+
+export interface InventoryOwnedCodeConflict {
+  evidence: string;
+  kind: "duplicate-owned-code";
+  claimants: Array<{
+    scope: "batch" | "sku";
+    resource_id: string;
+    name: string | null;
+  }>;
+}
+
+export interface InventoryEvidenceConflict {
+  kind: "evidence-conflict";
+  evidence: string[];
+  candidate_sets: Array<{
+    evidence: string;
+    total_num_candidates: number;
+    batch_ids: string[];
+  }>;
+}
+
+export type InventoryCandidateConflict =
+  | InventoryOwnedCodeConflict
+  | InventoryEvidenceConflict;
+
+export interface InventoryCandidateContextMismatch {
+  batch_id: string;
+  sku_id: string | null;
+  batch_name: string | null;
+  sku_name: string | null;
+  reason: "not-at-location" | "unsupported-holding-shape";
+}
+
+/**
+ * Contextual inventory identity resolution.
+ *
+ * `identified` is the only state safe to auto-select. A single text candidate
+ * still uses `candidates`, because cardinality alone is not proof of identity.
+ */
+export interface InventoryCandidatesResult {
+  kind: "inventory-candidates";
+  state: {
+    evidence: string[];
+    source_location_id: string | null;
+    status: "unknown" | "identified" | "candidates" | "conflict";
+    resolution: "none" | "unique" | "ambiguous";
+    total_num_results: number;
+    limit: number;
+    starting_from: number;
+    returned_num_results: number;
+    truncated: boolean;
+    results: InventoryCandidate[];
+    conflicts: InventoryCandidateConflict[];
+    total_context_mismatches: number;
+    context_mismatches: InventoryCandidateContextMismatch[];
+  };
+}
+
 class RestEndpoint {
   state: unknown;
   operations: Record<string, CallableRestOperation>;

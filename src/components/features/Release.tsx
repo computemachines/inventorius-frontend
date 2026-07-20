@@ -5,6 +5,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiContext } from "../../api-client/api-client";
 import { normalizeInventoriusId } from "../../identifiers";
+import { Code } from "../composites/CodesInput";
+import InventoryBatchSelector from "../composites/InventoryBatchSelector";
 import ItemLabel from "../primitives/ItemLabel";
 import { ToastContext } from "../primitives/Toast";
 import {
@@ -24,30 +26,30 @@ export default function Release() {
   const idempotency = useCommandIdempotency();
 
   const [binId, setBinId] = useState("");
-  const [batchId, setBatchId] = useState("");
+  const [itemEvidence, setItemEvidence] = useState<Code[]>([
+    { value: "", kind: "associated" },
+  ]);
+  const [selectedBatchId, setSelectedBatchId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [validationError, setValidationError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const binInput = useRef<HTMLInputElement>(null);
-  const batchInput = useRef<HTMLInputElement>(null);
+  const itemEvidenceInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const query = parse(location.search);
     const initialBin =
       typeof query.from === "string" ? normalizeInventoriusId(query.from) : "";
-    const initialBatch =
-      typeof query.batch === "string"
-        ? normalizeInventoriusId(query.batch)
-        : "";
+    const initialEvidence = typeof query.batch === "string" ? query.batch : "";
     const initialQuantity =
       typeof query.quantity === "string" ? query.quantity : "1";
 
     setBinId(initialBin);
-    setBatchId(initialBatch);
+    setItemEvidence([{ value: initialEvidence, kind: "associated" }]);
     setQuantity(initialQuantity);
     requestAnimationFrame(() => {
-      (initialBin ? batchInput : binInput).current?.focus();
+      (initialBin ? itemEvidenceInput : binInput).current?.focus();
     });
   }, [location.search]);
 
@@ -56,7 +58,7 @@ export default function Release() {
     setValidationError("");
 
     const locationId = normalizeInventoriusId(binId);
-    const canonicalBatchId = normalizeInventoriusId(batchId);
+    const canonicalBatchId = selectedBatchId;
     const count = Number(quantity);
 
     if (!isBinId(locationId)) {
@@ -65,8 +67,10 @@ export default function Release() {
       return;
     }
     if (!isBatchId(canonicalBatchId)) {
-      setValidationError("Release operations require a BAT label.");
-      batchInput.current?.focus();
+      setValidationError(
+        "Wait for the item to resolve, or choose a matching batch.",
+      );
+      itemEvidenceInput.current?.focus();
       return;
     }
     if (!Number.isInteger(count) || count < 1) {
@@ -106,17 +110,18 @@ export default function Release() {
       // Releasing several things usually starts from one physical bin.
       idempotency.clear();
       setBinId(locationId);
-      setBatchId("");
+      setItemEvidence([{ value: "", kind: "associated" }]);
+      setSelectedBatchId("");
       setQuantity("1");
       navigate(`/release?from=${encodeURIComponent(locationId)}`, {
         replace: true,
       });
-      requestAnimationFrame(() => batchInput.current?.focus());
+      requestAnimationFrame(() => itemEvidenceInput.current?.focus());
     } catch {
       setValidationError(
         "Could not submit the release. Check the API and retry.",
       );
-      batchInput.current?.focus();
+      itemEvidenceInput.current?.focus();
     } finally {
       setSubmitting(false);
     }
@@ -153,25 +158,29 @@ export default function Release() {
         ref={binInput}
         id="release-bin"
         value={binId}
-        onChange={(event) => setBinId(event.target.value)}
+        onChange={(event) => {
+          const nextBin = event.target.value;
+          if (
+            normalizeInventoriusId(nextBin) !== normalizeInventoriusId(binId)
+          ) {
+            setSelectedBatchId("");
+          }
+          setBinId(nextBin);
+        }}
         onBlur={() => setBinId(normalizeInventoriusId(binId))}
         placeholder="BIN000001"
         spellCheck={false}
         className={`${inputClasses} mb-5`}
       />
 
-      <label htmlFor="release-batch" className={labelClasses}>
-        Batch
-      </label>
-      <input
-        ref={batchInput}
-        id="release-batch"
-        value={batchId}
-        onChange={(event) => setBatchId(event.target.value)}
-        onBlur={() => setBatchId(normalizeInventoriusId(batchId))}
-        placeholder="BAT000001"
-        spellCheck={false}
-        className={`${inputClasses} mb-5`}
+      <InventoryBatchSelector
+        id="release-item-evidence"
+        firstInputRef={itemEvidenceInput}
+        sourceLocationId={binId}
+        evidence={itemEvidence}
+        setEvidence={setItemEvidence}
+        selectedBatchId={selectedBatchId}
+        setSelectedBatchId={setSelectedBatchId}
       />
 
       <label htmlFor="release-quantity" className={labelClasses}>

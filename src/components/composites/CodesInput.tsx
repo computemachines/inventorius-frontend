@@ -47,6 +47,9 @@ function BadgeRocker({
 
 function CodeInput({
   id,
+  inputRef,
+  ariaLabel,
+  spellCheck,
   code,
   setCode,
   onKeyDown,
@@ -54,6 +57,9 @@ function CodeInput({
   children,
 }: {
   id?: string;
+  inputRef?: React.Ref<HTMLInputElement>;
+  ariaLabel?: string;
+  spellCheck: boolean;
   code: Code;
   setCode: (code: Code) => void;
   onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>;
@@ -63,10 +69,12 @@ function CodeInput({
   return (
     <div className="codes-input-line ">
       <input
+        ref={inputRef}
         id={id}
+        aria-label={ariaLabel}
         type="text"
         value={code.value}
-        spellCheck={false}
+        spellCheck={spellCheck}
         onChange={(e) => {
           setCode({ ...code, value: e.target.value });
         }}
@@ -101,12 +109,20 @@ export interface Code {
 }
 function CodesInput({
   id,
+  firstInputRef,
+  inputLabel,
+  spellCheck = false,
   codes,
   editable = true,
   setCodes,
   showRelationshipControls = true,
 }: {
   id?: string;
+  firstInputRef?: React.Ref<HTMLInputElement>;
+  /** Accessible name for code rows after the first labelled input. */
+  inputLabel?: string;
+  /** Enable native spellcheck when rows accept prose as well as codes. */
+  spellCheck?: boolean;
   codes: Code[];
   editable?: boolean;
   setCodes?: (codes: Code[]) => void;
@@ -119,6 +135,9 @@ function CodesInput({
       <CodeInput
         key={i}
         id={i === 0 ? id : undefined}
+        inputRef={i === 0 ? firstInputRef : undefined}
+        ariaLabel={i === 0 ? undefined : inputLabel}
+        spellCheck={spellCheck}
         code={code}
         showRelationshipControls={showRelationshipControls}
         setCode={(code) => {
@@ -129,7 +148,7 @@ function CodesInput({
         onKeyDown={
           i == codes.length - 1
             ? (e) => {
-                if (e.key == "Tab" && code.value) {
+                if (e.key == "Tab" && !e.shiftKey && code.value) {
                   setCodes([...codes, { value: "", kind: "owned" }]);
                 }
               }

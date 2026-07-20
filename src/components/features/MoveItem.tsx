@@ -5,6 +5,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiContext } from "../../api-client/api-client";
 import { normalizeInventoriusId } from "../../identifiers";
+import { Code } from "../composites/CodesInput";
+import InventoryBatchSelector from "../composites/InventoryBatchSelector";
 import ItemLabel from "../primitives/ItemLabel";
 import { ToastContext } from "../primitives/Toast";
 import {
@@ -24,33 +26,35 @@ export default function MoveItem() {
   const idempotency = useCommandIdempotency();
 
   const [sourceBinId, setSourceBinId] = useState("");
-  const [batchId, setBatchId] = useState("");
+  const [itemEvidence, setItemEvidence] = useState<Code[]>([
+    { value: "", kind: "associated" },
+  ]);
+  const [selectedBatchId, setSelectedBatchId] = useState("");
   const [destinationBinId, setDestinationBinId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [validationError, setValidationError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const sourceInput = useRef<HTMLInputElement>(null);
-  const batchInput = useRef<HTMLInputElement>(null);
+  const itemEvidenceInput = useRef<HTMLInputElement>(null);
   const destinationInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const query = parse(location.search);
     const initialSource =
       typeof query.from === "string" ? normalizeInventoriusId(query.from) : "";
-    const initialBatch =
-      typeof query.batch === "string" ? normalizeInventoriusId(query.batch) : "";
+    const initialEvidence = typeof query.batch === "string" ? query.batch : "";
     const initialDestination =
       typeof query.to === "string" ? normalizeInventoriusId(query.to) : "";
     const initialQuantity =
       typeof query.quantity === "string" ? query.quantity : "1";
 
     setSourceBinId(initialSource);
-    setBatchId(initialBatch);
+    setItemEvidence([{ value: initialEvidence, kind: "associated" }]);
     setDestinationBinId(initialDestination);
     setQuantity(initialQuantity);
     requestAnimationFrame(() => {
-      (initialSource ? batchInput : sourceInput).current?.focus();
+      (initialSource ? itemEvidenceInput : sourceInput).current?.focus();
     });
   }, [location.search]);
 
@@ -59,7 +63,7 @@ export default function MoveItem() {
     setValidationError("");
 
     const sourceLocationId = normalizeInventoriusId(sourceBinId);
-    const canonicalBatchId = normalizeInventoriusId(batchId);
+    const canonicalBatchId = selectedBatchId;
     const destinationLocationId = normalizeInventoriusId(destinationBinId);
     const count = Number(quantity);
 
@@ -69,8 +73,10 @@ export default function MoveItem() {
       return;
     }
     if (!isBatchId(canonicalBatchId)) {
-      setValidationError("Move operations require a BAT label.");
-      batchInput.current?.focus();
+      setValidationError(
+        "Wait for the item to resolve, or choose a matching batch.",
+      );
+      itemEvidenceInput.current?.focus();
       return;
     }
     if (!isBinId(destinationLocationId)) {
@@ -123,16 +129,17 @@ export default function MoveItem() {
       idempotency.clear();
       setSourceBinId(sourceLocationId);
       setDestinationBinId(destinationLocationId);
-      setBatchId("");
+      setItemEvidence([{ value: "", kind: "associated" }]);
+      setSelectedBatchId("");
       setQuantity("1");
       navigate(
         `/move?from=${encodeURIComponent(sourceLocationId)}&to=${encodeURIComponent(destinationLocationId)}`,
         { replace: true },
       );
-      requestAnimationFrame(() => batchInput.current?.focus());
+      requestAnimationFrame(() => itemEvidenceInput.current?.focus());
     } catch {
       setValidationError("Could not submit the move. Check the API and retry.");
-      batchInput.current?.focus();
+      itemEvidenceInput.current?.focus();
     } finally {
       setSubmitting(false);
     }
@@ -162,25 +169,30 @@ export default function MoveItem() {
         ref={sourceInput}
         id="move-source-bin"
         value={sourceBinId}
-        onChange={(event) => setSourceBinId(event.target.value)}
+        onChange={(event) => {
+          const nextSource = event.target.value;
+          if (
+            normalizeInventoriusId(nextSource) !==
+            normalizeInventoriusId(sourceBinId)
+          ) {
+            setSelectedBatchId("");
+          }
+          setSourceBinId(nextSource);
+        }}
         onBlur={() => setSourceBinId(normalizeInventoriusId(sourceBinId))}
         placeholder="BIN000001"
         spellCheck={false}
         className={`${inputClasses} mb-5`}
       />
 
-      <label htmlFor="move-batch" className={labelClasses}>
-        Batch
-      </label>
-      <input
-        ref={batchInput}
-        id="move-batch"
-        value={batchId}
-        onChange={(event) => setBatchId(event.target.value)}
-        onBlur={() => setBatchId(normalizeInventoriusId(batchId))}
-        placeholder="BAT000001"
-        spellCheck={false}
-        className={`${inputClasses} mb-5`}
+      <InventoryBatchSelector
+        id="move-item-evidence"
+        firstInputRef={itemEvidenceInput}
+        sourceLocationId={sourceBinId}
+        evidence={itemEvidence}
+        setEvidence={setItemEvidence}
+        selectedBatchId={selectedBatchId}
+        setSelectedBatchId={setSelectedBatchId}
       />
 
       <label htmlFor="move-destination-bin" className={labelClasses}>
