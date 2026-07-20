@@ -392,13 +392,13 @@ function Batch({ editable = false }: { editable?: boolean }) {
               Edit
             </Link>
             <Link
-              to={stringifyUrl({ url: "/receive", query: { item: batch_id } })}
+              to={stringifyUrl({ url: "/receive", query: { batch: batch_id } })}
               className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
             >
               Receive
             </Link>
             <Link
-              to={stringifyUrl({ url: "/release", query: { item: batch_id } })}
+              to={stringifyUrl({ url: "/release", query: { batch: batch_id } })}
               className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
             >
               Release

@@ -8,36 +8,20 @@ import { normalizeInventoriusId } from "../../identifiers";
 import CodesInput, { Code } from "../composites/CodesInput";
 import { ToastContext } from "../primitives/Toast";
 import ItemLabel from "../primitives/ItemLabel";
-
-const labelClasses =
-  "block text-[0.85rem] font-semibold text-[#04151f] uppercase tracking-wide mb-1.5";
-const inputClasses =
-  "w-full rounded-md border border-[#cdd2d6] bg-white px-3 py-3 text-base text-[#04151f] focus:border-[#26532b] focus:outline-none focus:ring-2 focus:ring-[#26532b]/20";
-
-function createIdempotencyKey() {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-
-  const bytes = new Uint8Array(16);
-  if (typeof globalThis.crypto?.getRandomValues === "function") {
-    globalThis.crypto.getRandomValues(bytes);
-  } else {
-    for (let index = 0; index < bytes.length; index += 1) {
-      bytes[index] = Math.floor(Math.random() * 256);
-    }
-  }
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
-  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
-}
+import {
+  inputClasses,
+  isBinId,
+  labelClasses,
+  submitClasses,
+  useCommandIdempotency,
+} from "./inventory-operation-form";
 
 export default function QuickCapture() {
   const location = useLocation();
   const navigate = useNavigate();
   const api = useContext(ApiContext);
   const { setToastContent } = useContext(ToastContext);
+  const idempotency = useCommandIdempotency();
 
   const [description, setDescription] = useState("");
   const [codes, setCodes] = useState<Code[]>([
@@ -50,7 +34,6 @@ export default function QuickCapture() {
 
   const descriptionInput = useRef<HTMLInputElement>(null);
   const binInput = useRef<HTMLInputElement>(null);
-  const pendingCapture = useRef<{ payload: string; idempotencyKey: string } | null>(null);
 
   useEffect(() => {
     const query = parse(location.search);
@@ -70,7 +53,7 @@ export default function QuickCapture() {
     const summary = description.trim();
     const count = Number(quantity);
 
-    if (!/^BIN\d+$/.test(destination)) {
+    if (!isBinId(destination)) {
       setValidationError("Scan or enter a BIN label.");
       binInput.current?.focus();
       return;
@@ -97,16 +80,9 @@ export default function QuickCapture() {
         unit: "each" as const,
         ...(observedCodes.length ? { observed_codes: observedCodes } : {}),
       };
-      const serializedPayload = JSON.stringify(payload);
-      if (pendingCapture.current?.payload !== serializedPayload) {
-        pendingCapture.current = {
-          payload: serializedPayload,
-          idempotencyKey: createIdempotencyKey(),
-        };
-      }
       const response = await api.quickCapture(
         payload,
-        pendingCapture.current.idempotencyKey
+        idempotency.keyFor(payload)
       );
 
       if (response.kind === "problem") {
@@ -131,7 +107,7 @@ export default function QuickCapture() {
       setDescription("");
       setCodes([{ kind: "owned", value: "" }]);
       setQuantity("1");
-      pendingCapture.current = null;
+      idempotency.clear();
       navigate(`/capture?into=${encodeURIComponent(destination)}`, {
         replace: true,
       });
@@ -221,7 +197,7 @@ export default function QuickCapture() {
       <button
         type="submit"
         disabled={submitting}
-        className="w-full rounded-md bg-[#26532b] px-6 py-3 text-base font-semibold text-white hover:bg-[#1e4423] disabled:cursor-wait disabled:opacity-60"
+        className={submitClasses}
       >
         {submitting ? "Capturing…" : "Capture item"}
       </button>

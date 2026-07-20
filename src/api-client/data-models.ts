@@ -85,6 +85,44 @@ export interface CaptureResult extends Status {
   };
 }
 
+/**
+ * A constrained inventory command submitted by a scanner-facing workflow.
+ *
+ * The API deliberately accepts domain commands rather than arbitrary ledger
+ * legs. The location terminology leaves room for racks, workstations, and
+ * other future locations while the current UI still calls them bins.
+ */
+export type InventoryOperationCommand =
+  | {
+      kind: "receive" | "release";
+      batch_id: string;
+      quantity: number;
+      unit: "each";
+      location_id: string;
+    }
+  | {
+      kind: "transfer";
+      batch_id: string;
+      quantity: number;
+      unit: "each";
+      source_location_id: string;
+      destination_location_id: string;
+    };
+
+export interface InventoryOperationResult extends Status {
+  state: {
+    operation_id: string;
+    kind: InventoryOperationCommand["kind"];
+    batch_id: string;
+    quantity: number;
+    unit: "each";
+    packaging_configuration_id: string | null;
+    location_id?: string;
+    source_location_id?: string;
+    destination_location_id?: string;
+  };
+}
+
 class RestEndpoint {
   state: unknown;
   operations: Record<string, CallableRestOperation>;

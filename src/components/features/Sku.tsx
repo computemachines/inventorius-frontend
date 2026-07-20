@@ -20,7 +20,6 @@ import PrintButton from "../composites/PrintButton";
 import ItemLocations from "../primitives/ItemLocations";
 import { useContext, useEffect, useState } from "react";
 import { ToastContext } from "../primitives/Toast";
-import { stringifyUrl } from "query-string";
 import PropertiesTable, {
   api_props_from_properties,
   Property,
@@ -342,18 +341,6 @@ function Sku({ editable = false }: { editable?: boolean }) {
               className="py-3 px-5 text-base font-semibold bg-[#0c3764] text-white rounded-md hover:bg-[#082441] transition-colors text-center"
             >
               Edit
-            </Link>
-            <Link
-              to={stringifyUrl({ url: "/receive", query: { item: id } })}
-              className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
-            >
-              Receive
-            </Link>
-            <Link
-              to={stringifyUrl({ url: "/release", query: { item: id } })}
-              className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
-            >
-              Release
             </Link>
             <button
               type="button"

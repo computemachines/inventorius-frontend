@@ -19,6 +19,8 @@ import {
   BundleLookupResult,
   BundleContext,
   CaptureResult,
+  InventoryOperationCommand,
+  InventoryOperationResult,
   ProcessDefinition,
   ProcessDefinitionState,
   ProcessDefinitionWrite,
@@ -246,70 +248,21 @@ export class ApiClient {
   }
 
 
-  async receive({
-    into_id,
-    item_id,
-    quantity,
-  }: {
-    into_id: string;
-    item_id: string;
-    quantity: number;
-  }): Promise<Status | Problem> {
-    const resp = await this._fetch(`${this.hostname}/api/bin/${into_id}/contents`, {
+  async postInventoryOperation(
+    command: InventoryOperationCommand,
+    idempotencyKey: string,
+  ): Promise<InventoryOperationResult | Problem> {
+    const resp = await this._fetch(`${this.hostname}/api/inventory-operations`, {
       method: "POST",
-      body: JSON.stringify({
-        id: item_id,
-        quantity,
-      }),
+      body: JSON.stringify(command),
       headers: {
         "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
       },
     });
     const json = await resp.json();
-    if (resp.ok) {
-      return { ...json, kind: "status" };
-    } else {
-      return { ...json, kind: "problem" };
-    }
-  }
-
-  async release({ from_id, item_id, quantity }): Promise<Status | Problem> {
-    const resp = await this._fetch(`${this.hostname}/api/bin/${from_id}/contents`, {
-      method: "POST",
-      body: JSON.stringify({
-        id: item_id,
-        quantity: -quantity,
-      }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-    const json = await resp.json();
-    if (resp.ok) {
-      return {...json, kind: "status"};
-    } else {
-      return {...json, kind: "problem"};
-    }
-  }
-
-  async move({ from_id, to_id, item_id, quantity }): Promise < Status | Problem > {
-    const resp = await this._fetch(`${this.hostname}/api/bin/${from_id}/contents/move`, {
-      method: "PUT",
-      body: JSON.stringify({
-        id: item_id,
-        destination: to_id,
-        quantity,
-      }),
-      headers: {
-        "Content-Type": "application/json",
-      }
-    });
-    const json = await resp.json();
-    if(resp.ok) {
-      return { ...json, kind: "status" };
-    } else {
-      return { ...json, kind: "problem" };
-    }
+    if (resp.ok) return { ...json, kind: "status" };
+    return { ...json, kind: "problem" };
   }
 
   // ===========================================================================

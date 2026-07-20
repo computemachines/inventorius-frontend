@@ -1,123 +1,221 @@
-// src/components/features/MoveItem.tsx
-// Fully human reviewed: NO
-// Progress: NONE
-//
-// Conversation:
-// > (no discussion yet)
-
-
 import * as React from "react";
-import { useState, useContext } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { parse } from "query-string";
+import { useLocation, useNavigate } from "react-router-dom";
+
 import { ApiContext } from "../../api-client/api-client";
 import { normalizeInventoriusId } from "../../identifiers";
-
-import "../../styles/form.css";
-import { ToastContext } from "../primitives/Toast";
 import ItemLabel from "../primitives/ItemLabel";
+import { ToastContext } from "../primitives/Toast";
+import {
+  inputClasses,
+  isBatchId,
+  isBinId,
+  labelClasses,
+  submitClasses,
+  useCommandIdempotency,
+} from "./inventory-operation-form";
 
 export default function MoveItem() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const api = useContext(ApiContext);
-  const { setToastContent: setAlertContent } = useContext(ToastContext);
-  const clearAlert = (e) => setAlertContent({});
+  const { setToastContent } = useContext(ToastContext);
+  const idempotency = useCommandIdempotency();
 
-  const [itemId, setItemId] = useState("");
-  const [fromId, setFromId] = useState("");
-  const [toId, setToId] = useState("");
+  const [sourceBinId, setSourceBinId] = useState("");
+  const [batchId, setBatchId] = useState("");
+  const [destinationBinId, setDestinationBinId] = useState("");
   const [quantity, setQuantity] = useState("1");
+  const [validationError, setValidationError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const sourceInput = useRef<HTMLInputElement>(null);
+  const batchInput = useRef<HTMLInputElement>(null);
+  const destinationInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const query = parse(location.search);
+    const initialSource =
+      typeof query.from === "string" ? normalizeInventoriusId(query.from) : "";
+    const initialBatch =
+      typeof query.batch === "string" ? normalizeInventoriusId(query.batch) : "";
+    const initialDestination =
+      typeof query.to === "string" ? normalizeInventoriusId(query.to) : "";
+    const initialQuantity =
+      typeof query.quantity === "string" ? query.quantity : "1";
+
+    setSourceBinId(initialSource);
+    setBatchId(initialBatch);
+    setDestinationBinId(initialDestination);
+    setQuantity(initialQuantity);
+    requestAnimationFrame(() => {
+      (initialSource ? batchInput : sourceInput).current?.focus();
+    });
+  }, [location.search]);
+
+  const move = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setValidationError("");
+
+    const sourceLocationId = normalizeInventoriusId(sourceBinId);
+    const canonicalBatchId = normalizeInventoriusId(batchId);
+    const destinationLocationId = normalizeInventoriusId(destinationBinId);
+    const count = Number(quantity);
+
+    if (!isBinId(sourceLocationId)) {
+      setValidationError("Scan or enter a source BIN label.");
+      sourceInput.current?.focus();
+      return;
+    }
+    if (!isBatchId(canonicalBatchId)) {
+      setValidationError("Move operations require a BAT label.");
+      batchInput.current?.focus();
+      return;
+    }
+    if (!isBinId(destinationLocationId)) {
+      setValidationError("Scan or enter a destination BIN label.");
+      destinationInput.current?.focus();
+      return;
+    }
+    if (sourceLocationId === destinationLocationId) {
+      setValidationError("The source and destination bins must be different.");
+      destinationInput.current?.focus();
+      return;
+    }
+    if (!Number.isInteger(count) || count < 1) {
+      setValidationError("Quantity must be a positive whole number.");
+      return;
+    }
+
+    const command = {
+      kind: "transfer" as const,
+      batch_id: canonicalBatchId,
+      quantity: count,
+      unit: "each" as const,
+      source_location_id: sourceLocationId,
+      destination_location_id: destinationLocationId,
+    };
+
+    setSubmitting(true);
+    try {
+      const response = await api.postInventoryOperation(
+        command,
+        idempotency.keyFor(command),
+      );
+      if (response.kind === "problem") {
+        setValidationError(response.title);
+        return;
+      }
+
+      setToastContent({
+        content: (
+          <p>
+            Moved {count} × <ItemLabel label={canonicalBatchId} /> from{" "}
+            <ItemLabel label={sourceLocationId} /> to{" "}
+            <ItemLabel label={destinationLocationId} />.
+          </p>
+        ),
+        mode: "success",
+      });
+
+      // Repeated moves normally use the same two physical bins.
+      idempotency.clear();
+      setSourceBinId(sourceLocationId);
+      setDestinationBinId(destinationLocationId);
+      setBatchId("");
+      setQuantity("1");
+      navigate(
+        `/move?from=${encodeURIComponent(sourceLocationId)}&to=${encodeURIComponent(destinationLocationId)}`,
+        { replace: true },
+      );
+      requestAnimationFrame(() => batchInput.current?.focus());
+    } catch {
+      setValidationError("Could not submit the move. Check the API and retry.");
+      batchInput.current?.focus();
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <form
-      className="form"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        const canonicalItemId = normalizeInventoriusId(itemId);
-        const canonicalFromId = normalizeInventoriusId(fromId);
-        const canonicalToId = normalizeInventoriusId(toId);
+    <form className="max-w-[40rem] mx-auto" onSubmit={move} autoComplete="off">
+      <h2 className="text-2xl font-bold text-[#04151f] mb-2">Move inventory</h2>
+      <p className="text-[#6d635d] mb-6">
+        Scan the source bin, the batch to move, then the destination bin.
+      </p>
 
-        const resp = await api.move({
-          from_id: canonicalFromId,
-          to_id: canonicalToId,
-          quantity: parseInt(quantity),
-          item_id: canonicalItemId,
-        });
+      {validationError && (
+        <div
+          role="alert"
+          className="mb-5 rounded-md border border-red-300 bg-red-50 px-4 py-3
+            text-red-700"
+        >
+          {validationError}
+        </div>
+      )}
 
-        if (resp.kind == "problem") {
-          setAlertContent({
-            mode: "failure",
-            content: (
-              <div>
-                <span>{resp.title}</span>
-              </div>
-            ),
-          });
-        } else {
-          setAlertContent({
-            mode: "success",
-            content: (
-              <div>
-                Success. Moved {quantity} count,
-                <ItemLabel label={canonicalItemId} onClick={clearAlert} /> from{" "}
-                <ItemLabel label={canonicalFromId} onClick={clearAlert} /> to{" "}
-                <ItemLabel label={canonicalToId} onClick={clearAlert} />
-              </div>
-            ),
-          });
+      <label htmlFor="move-source-bin" className={labelClasses}>
+        Source bin
+      </label>
+      <input
+        ref={sourceInput}
+        id="move-source-bin"
+        value={sourceBinId}
+        onChange={(event) => setSourceBinId(event.target.value)}
+        onBlur={() => setSourceBinId(normalizeInventoriusId(sourceBinId))}
+        placeholder="BIN000001"
+        spellCheck={false}
+        className={`${inputClasses} mb-5`}
+      />
+
+      <label htmlFor="move-batch" className={labelClasses}>
+        Batch
+      </label>
+      <input
+        ref={batchInput}
+        id="move-batch"
+        value={batchId}
+        onChange={(event) => setBatchId(event.target.value)}
+        onBlur={() => setBatchId(normalizeInventoriusId(batchId))}
+        placeholder="BAT000001"
+        spellCheck={false}
+        className={`${inputClasses} mb-5`}
+      />
+
+      <label htmlFor="move-destination-bin" className={labelClasses}>
+        Destination bin
+      </label>
+      <input
+        ref={destinationInput}
+        id="move-destination-bin"
+        value={destinationBinId}
+        onChange={(event) => setDestinationBinId(event.target.value)}
+        onBlur={() =>
+          setDestinationBinId(normalizeInventoriusId(destinationBinId))
         }
-      }}
-    >
-      <h2 className="form-title">Move Item</h2>
-      <label htmlFor="item_id" className="form-label">
-        Item
-      </label>
-      <input
-        type="text"
-        className="form-single-code-input"
-        id="item_id"
-        name="item_id"
-        value={itemId}
-        onChange={(e) => setItemId(e.target.value)}
-        onBlur={() => setItemId(normalizeInventoriusId(itemId))}
+        placeholder="BIN000002"
+        spellCheck={false}
+        className={`${inputClasses} mb-5`}
       />
 
-      <label htmlFor="from_id" className="form-label">
-        Source
-      </label>
-      <input
-        className="form-single-code-input"
-        id="from_id"
-        name="from_id"
-        type="text"
-        value={fromId}
-        onChange={(e) => setFromId(e.target.value)}
-        onBlur={() => setFromId(normalizeInventoriusId(fromId))}
-      />
-
-      <label htmlFor="to_id" className="form-label">
-        Destination
-      </label>
-      <input
-        className="form-single-code-input"
-        id="to_id"
-        name="to_id"
-        type="text"
-        value={toId}
-        onChange={(e) => setToId(e.target.value)}
-        onBlur={() => setToId(normalizeInventoriusId(toId))}
-      />
-
-      <label htmlFor="quantity" className="form-label">
+      <label htmlFor="move-quantity" className={labelClasses}>
         Quantity
       </label>
       <input
-        className="form-single-code-input"
-        id="quantity"
-        name="quantity"
+        id="move-quantity"
         type="number"
+        min="1"
+        step="1"
+        inputMode="numeric"
         value={quantity}
-        onChange={(e) => setQuantity(e.target.value)}
+        onChange={(event) => setQuantity(event.target.value)}
+        className={`${inputClasses} mb-7`}
       />
 
-      <input type="submit" value="Submit" className="form-submit" />
+      <button type="submit" disabled={submitting} className={submitClasses}>
+        {submitting ? "Moving…" : "Move batch"}
+      </button>
     </form>
   );
 }
