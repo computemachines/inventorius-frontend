@@ -21,7 +21,7 @@ export function isSkuId(value: string): boolean {
   return /^SKU\d{6}$/.test(value);
 }
 
-function createIdempotencyKey(): string {
+export function createIdempotencyKey(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();
   }

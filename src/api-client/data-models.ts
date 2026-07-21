@@ -71,6 +71,18 @@ export interface Status {
   status: string;
 }
 
+export interface BinCreationResult extends Status {
+  state: {
+    id: string;
+    props: Props;
+  };
+}
+
+export interface BinCreationProblem extends Problem {
+  /** Preserve the transport status so callers can distinguish rejection from uncertainty. */
+  httpStatus: number;
+}
+
 interface IntakeState {
   sku_id: string;
   batch_id: string;

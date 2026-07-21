@@ -12,6 +12,8 @@ import {
   NextBatch,
   Batch,
   ApiStatus,
+  BinCreationProblem,
+  BinCreationResult,
   Status,
   Stats,
   CodeUsageResult,
@@ -172,19 +174,23 @@ export class ApiClient {
   }
 
 
-  async createBin({ id, props }: { id: string; props?: unknown }): Promise<Status | Problem> {
+  async createBin(
+    { id, props }: { id?: string; props?: unknown },
+    idempotencyKey: string,
+  ): Promise<BinCreationResult | BinCreationProblem> {
     const resp = await this._fetch(`${this.hostname}/api/bins`, {
       method: "POST",
       body: JSON.stringify({ id, props }),
       headers: {
         "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
       },
     });
     const json = await resp.json();
     if (resp.ok) {
       return { ...json, kind: "status" };
     } else {
-      return { ...json, kind: "problem" };
+      return { ...json, kind: "problem", httpStatus: resp.status };
     }
   }
 
