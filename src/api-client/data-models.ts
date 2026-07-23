@@ -318,6 +318,41 @@ export interface InventoryCandidatesResult {
   };
 }
 
+export interface AuditSnapshotHolding {
+  batch_id: string;
+  sku_id: string | null;
+  batch_name: string | null;
+  sku_name: string | null;
+  quantity: number | string;
+  unit: string;
+  packaging_configuration_id: string | null;
+  supported: boolean;
+}
+
+export type AuditSnapshotBlocker =
+  | {
+      type: "legacy-bin-contents";
+      entry_count: number;
+    }
+  | {
+      type: "unsupported-holding-shapes";
+      holding_count: number;
+    }
+  | {
+      type: string;
+      [key: string]: unknown;
+    };
+
+export interface AuditSnapshotResult {
+  kind: "audit-snapshot";
+  state: {
+    location_id: string;
+    snapshot_token: string;
+    holdings: AuditSnapshotHolding[];
+    blockers: AuditSnapshotBlocker[];
+  };
+}
+
 class RestEndpoint {
   state: unknown;
   operations: Record<string, CallableRestOperation>;

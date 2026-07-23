@@ -24,6 +24,7 @@ import {
   InventoryOperationCommand,
   InventoryOperationResult,
   InventoryCandidatesResult,
+  AuditSnapshotResult,
   ProcessDefinition,
   ProcessDefinitionState,
   ProcessDefinitionWrite,
@@ -290,6 +291,18 @@ export class ApiClient {
     );
     const json = await resp.json();
     if (resp.ok) return { ...json, kind: "inventory-candidates" };
+    return { ...json, kind: "problem" };
+  }
+
+
+  async getAuditSnapshot(
+    locationId: string,
+  ): Promise<AuditSnapshotResult | Problem> {
+    const resp = await this._fetch(
+      `${this.hostname}/api/audit-snapshots/${encodeURIComponent(locationId)}`,
+    );
+    const json = await resp.json();
+    if (resp.ok) return { ...json, kind: "audit-snapshot" };
     return { ...json, kind: "problem" };
   }
 
