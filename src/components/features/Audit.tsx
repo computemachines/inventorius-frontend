@@ -4,6 +4,8 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { ApiContext } from "../../api-client/api-client";
 import {
+  AuditObservationRequest,
+  AuditObservationState,
   AuditSnapshotBlocker,
   AuditSnapshotHolding,
   AuditSnapshotResult,
@@ -12,14 +14,16 @@ import { normalizeInventoriusId } from "../../identifiers";
 import { Code } from "../composites/CodesInput";
 import InventoryBatchSelector from "../composites/InventoryBatchSelector";
 import ItemLabel from "../primitives/ItemLabel";
+import ReceiptTime from "../primitives/ReceiptTime";
 import {
   inputClasses,
   isBinId,
   labelClasses,
   submitClasses,
+  useCommandIdempotency,
 } from "./inventory-operation-form";
 
-type AuditPhase = "counting" | "review" | "stale";
+type AuditPhase = "counting" | "review" | "stale" | "recorded";
 type ExpectedClassification = "Matched" | "Missing" | "Overage" | "Shortage";
 
 interface UnexpectedCount {
@@ -159,12 +163,14 @@ function CountingStatus({
 
 export default function Audit() {
   const api = React.useContext(ApiContext);
+  const idempotency = useCommandIdempotency();
   const location = useLocation();
   const navigate = useNavigate();
   const binInput = React.useRef<HTMLInputElement>(null);
   const handledQueryBin = React.useRef<string | null>(null);
   const loadGeneration = React.useRef(0);
   const reviewGeneration = React.useRef(0);
+  const recordGeneration = React.useRef(0);
 
   const [binId, setBinId] = React.useState("");
   const [snapshot, setSnapshot] = React.useState<AuditSnapshotResult | null>(
@@ -180,9 +186,12 @@ export default function Audit() {
   const [selectedBatchId, setSelectedBatchId] = React.useState("");
   const [pendingUnexpectedCount, setPendingUnexpectedCount] =
     React.useState("");
+  const [recordedObservation, setRecordedObservation] =
+    React.useState<AuditObservationState | null>(null);
   const [phase, setPhase] = React.useState<AuditPhase>("counting");
   const [loading, setLoading] = React.useState(false);
   const [reviewing, setReviewing] = React.useState(false);
+  const [recording, setRecording] = React.useState(false);
   const [error, setError] = React.useState("");
 
   const resetCount = React.useCallback((nextSnapshot: AuditSnapshotResult) => {
@@ -192,6 +201,7 @@ export default function Audit() {
     setItemEvidence(blankEvidence());
     setSelectedBatchId("");
     setPendingUnexpectedCount("");
+    setRecordedObservation(null);
     setPhase("counting");
   }, []);
 
@@ -199,8 +209,10 @@ export default function Audit() {
     async (canonicalBinId: string) => {
       const generation = ++loadGeneration.current;
       ++reviewGeneration.current;
+      ++recordGeneration.current;
       setLoading(true);
       setReviewing(false);
+      setRecording(false);
       setError("");
       setSnapshot(null);
 
@@ -233,9 +245,12 @@ export default function Audit() {
     if (!isBinId(canonicalBinId)) {
       ++loadGeneration.current;
       ++reviewGeneration.current;
+      ++recordGeneration.current;
       setSnapshot(null);
       setLoading(false);
       setReviewing(false);
+      setRecording(false);
+      setRecordedObservation(null);
       setError("Scan or enter a valid BIN label.");
       return;
     }
@@ -285,6 +300,8 @@ export default function Audit() {
   const selectedIsAlreadyUnexpected = unexpectedCounts.some(
     ({ batchId }) => batchId === selectedBatchId,
   );
+  const hasPendingUnexpectedSelection =
+    !!selectedBatchId && !selectedIsExpected && !selectedIsAlreadyUnexpected;
   const hasUnsupportedHolding = expectedHoldings.some(
     (holding) => !holding.supported || wholeNumber(holding.quantity) === null,
   );
@@ -304,6 +321,48 @@ export default function Audit() {
     everyExpectedCounted &&
     everyUnexpectedCounted &&
     phase !== "stale";
+  const unresolvedEvidence = React.useMemo(() => {
+    if (selectedBatchId && !hasPendingUnexpectedSelection) return [];
+    return Array.from(
+      new Set(
+        itemEvidence
+          .map(({ value }) => value.trim())
+          .filter((value) => value.length > 0),
+      ),
+    );
+  }, [hasPendingUnexpectedSelection, itemEvidence, selectedBatchId]);
+  const observationCommand =
+    React.useMemo<AuditObservationRequest | null>(() => {
+      if (!snapshot) return null;
+
+      return {
+        location_id: snapshot.state.location_id,
+        snapshot_token: snapshot.state.snapshot_token,
+        counts: [
+          ...expectedHoldings.map((holding, index) => ({
+            batch_id: holding.batch_id,
+            quantity: Number(observedCounts[holdingKey(holding, index)] ?? ""),
+            unit: "each" as const,
+            packaging_configuration_id: null,
+          })),
+          ...unexpectedCounts.map(({ batchId, observed }) => ({
+            batch_id: batchId,
+            quantity: Number(observed),
+            unit: "each" as const,
+            packaging_configuration_id: null,
+          })),
+        ],
+        ...(unresolvedEvidence.length
+          ? { unresolved_evidence: unresolvedEvidence }
+          : {}),
+      };
+    }, [
+      expectedHoldings,
+      observedCounts,
+      snapshot,
+      unexpectedCounts,
+      unresolvedEvidence,
+    ]);
 
   const addUnexpected = () => {
     if (
@@ -355,9 +414,52 @@ export default function Audit() {
     }
   };
 
+  const recordCount = async () => {
+    if (!observationCommand || phase !== "review" || recording) return;
+
+    const generation = ++recordGeneration.current;
+    setRecording(true);
+    setError("");
+    try {
+      const response = await api.recordAuditObservation(
+        observationCommand,
+        idempotency.keyFor(observationCommand),
+      );
+      if (generation !== recordGeneration.current) return;
+
+      if (response.kind === "problem") {
+        if (response.type === "audit-snapshot-stale") {
+          setPhase("stale");
+          return;
+        }
+
+        const reason = [response.title, response.detail]
+          .filter((value): value is string => Boolean(value))
+          .map((value) => value.trim().replace(/[.]+$/, ""))
+          .join(". ");
+        setError(
+          `${reason}. Your entered counts and unresolved evidence are still here.`,
+        );
+        return;
+      }
+
+      idempotency.clear();
+      setRecordedObservation(response.state);
+      setPhase("recorded");
+    } catch {
+      if (generation !== recordGeneration.current) return;
+      setError(
+        "The observation could not be confirmed. Your counts, unresolved evidence, and retry identity are still here.",
+      );
+    } finally {
+      if (generation === recordGeneration.current) setRecording(false);
+    }
+  };
+
   const startAnotherBin = () => {
     ++loadGeneration.current;
     ++reviewGeneration.current;
+    ++recordGeneration.current;
     handledQueryBin.current = null;
     setBinId("");
     setSnapshot(null);
@@ -366,9 +468,11 @@ export default function Audit() {
     setItemEvidence(blankEvidence());
     setSelectedBatchId("");
     setPendingUnexpectedCount("");
+    setRecordedObservation(null);
     setPhase("counting");
     setLoading(false);
     setReviewing(false);
+    setRecording(false);
     setError("");
     navigate("/audit", { replace: true });
     globalThis.requestAnimationFrame(() => binInput.current?.focus());
@@ -388,8 +492,8 @@ export default function Audit() {
         className="mb-6 rounded-md border border-blue-200 bg-blue-50 px-4 py-3
           text-sm font-semibold text-blue-900"
       >
-        This is a read-only count. It does not receive, release, move, or adjust
-        inventory.
+        Recording a count preserves physical evidence. It does not receive,
+        release, move, or adjust inventory.
       </p>
 
       <form onSubmit={loadBin} autoComplete="off" className="mb-7">
@@ -410,7 +514,7 @@ export default function Audit() {
           />
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || recording}
             className={`${submitClasses} sm:w-auto sm:min-w-36`}
           >
             {loading ? "Loading…" : "Load bin"}
@@ -434,6 +538,44 @@ export default function Audit() {
         </p>
       )}
 
+      {state && phase === "recorded" && recordedObservation && (
+        <section aria-labelledby="audit-recorded-title">
+          <h2
+            id="audit-recorded-title"
+            className="text-xl font-bold text-[#04151f] mb-3"
+          >
+            Count recorded for <ItemLabel label={state.location_id} />
+          </h2>
+          <div
+            role="status"
+            className="mb-6 rounded-md border border-green-300 bg-green-50 px-4
+              py-4 text-green-950"
+          >
+            <p className="text-lg font-bold">Physical evidence recorded</p>
+            <p className="mt-2">
+              Observation{" "}
+              <code className="font-semibold">
+                {recordedObservation.observation_id}
+              </code>
+            </p>
+            <p className="mt-1">
+              Recorded <ReceiptTime value={recordedObservation.recorded_at} />
+            </p>
+            <p className="mt-3 text-sm font-semibold">
+              This preserved the count as physical evidence. It did not adjust
+              inventory.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={startAnotherBin}
+            className={`${submitClasses} sm:w-auto sm:min-w-44`}
+          >
+            Count next bin
+          </button>
+        </section>
+      )}
+
       {state && phase === "review" && (
         <section aria-labelledby="audit-review-title">
           <h2
@@ -447,7 +589,8 @@ export default function Audit() {
             className="mb-5 rounded-md border border-green-300 bg-green-50 px-4
               py-3 text-lg font-bold text-green-900"
           >
-            Nothing has changed in inventory. This is only a comparison.
+            Inventory has not changed. Review the evidence below before
+            recording it.
           </div>
 
           <ul className="space-y-3 mb-6">
@@ -516,28 +659,66 @@ export default function Audit() {
             ))}
           </ul>
 
+          {unresolvedEvidence.length > 0 && (
+            <section
+              aria-labelledby="audit-unresolved-title"
+              className="mb-6 rounded-md border border-amber-300 bg-amber-50
+                px-4 py-4 text-amber-950"
+            >
+              <h3 id="audit-unresolved-title" className="font-bold">
+                {hasPendingUnexpectedSelection
+                  ? "Uncounted known batch evidence"
+                  : "Unresolved physical evidence"}
+              </h3>
+              <p className="mt-1 text-sm">
+                {hasPendingUnexpectedSelection ? (
+                  <>
+                    These values identified{" "}
+                    <ItemLabel label={selectedBatchId} />, but no positive
+                    quantity was added. Recording will preserve the values as
+                    unresolved evidence, not as a batch count.
+                  </>
+                ) : (
+                  <>
+                    These values did not identify a known batch. Recording will
+                    preserve them with this count.
+                  </>
+                )}
+              </p>
+              <ul className="mt-3 list-disc space-y-1 pl-5">
+                {unresolvedEvidence.map((value, index) => (
+                  <li key={`${value}-${index}`}>
+                    <code>{value}</code>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <div className="flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
+              disabled={recording}
               onClick={() => setPhase("counting")}
               className="rounded-md border border-[#26532b] bg-white px-5 py-3
-                font-semibold text-[#26532b] hover:bg-green-50"
+                font-semibold text-[#26532b] hover:bg-green-50
+                disabled:cursor-wait disabled:opacity-60"
             >
               Back to counting
             </button>
             <button
               type="button"
-              onClick={startAnotherBin}
-              className="rounded-md bg-[#26532b] px-5 py-3 font-semibold
-                text-white hover:bg-[#1e4423]"
+              disabled={recording}
+              onClick={() => void recordCount()}
+              className={`${submitClasses} sm:w-auto sm:min-w-52`}
             >
-              Start another bin
+              {recording ? "Recording evidence…" : "Record physical evidence"}
             </button>
           </div>
         </section>
       )}
 
-      {state && phase !== "review" && (
+      {state && phase !== "review" && phase !== "recorded" && (
         <section aria-labelledby="audit-count-title">
           <h2
             id="audit-count-title"
@@ -560,8 +741,8 @@ export default function Audit() {
                 Recorded inventory changed while you were counting.
               </p>
               <p className="mt-1 text-sm">
-                Your entered counts are still shown below, but they cannot be
-                compared with the stale snapshot.
+                Your entered counts and unresolved evidence are still retained
+                below, but they cannot be compared with the stale snapshot.
               </p>
               <button
                 type="button"
@@ -569,7 +750,7 @@ export default function Audit() {
                 className="mt-3 rounded-md bg-amber-900 px-4 py-2 font-semibold
                   text-white hover:bg-amber-950"
               >
-                Reload recorded inventory and recount
+                Load current inventory and start a new count
               </button>
             </div>
           )}

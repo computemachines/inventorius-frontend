@@ -448,6 +448,44 @@ export interface AuditSnapshotResult {
   };
 }
 
+export interface AuditObservationCount {
+  batch_id: string;
+  quantity: number;
+  unit: "each";
+  packaging_configuration_id: null;
+}
+
+export interface AuditObservationRequest {
+  location_id: string;
+  snapshot_token: string;
+  counts: AuditObservationCount[];
+  unresolved_evidence?: string[];
+}
+
+export interface AuditObservationRecordedCount {
+  batch_id: string;
+  unit: "each";
+  packaging_configuration_id: null;
+  recorded_quantity: number | string;
+  observed_quantity: number | string;
+  difference: number | string;
+}
+
+export interface AuditObservationState {
+  observation_id: string;
+  location_id: string;
+  snapshot_token: string;
+  recorded_at: string;
+  counts: AuditObservationRecordedCount[];
+  unresolved_evidence: string[];
+}
+
+export interface AuditObservationResult {
+  kind: "audit-observation";
+  status?: string;
+  state: AuditObservationState;
+}
+
 class RestEndpoint {
   state: unknown;
   operations: Record<string, CallableRestOperation>;

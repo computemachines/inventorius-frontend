@@ -27,6 +27,8 @@ import {
   InventoryOperationReceiptResult,
   InventoryOperationResult,
   InventoryCandidatesResult,
+  AuditObservationRequest,
+  AuditObservationResult,
   AuditSnapshotResult,
   ProcessDefinition,
   ProcessDefinitionState,
@@ -359,6 +361,23 @@ export class ApiClient {
     );
     const json = await resp.json();
     if (resp.ok) return { ...json, kind: "audit-snapshot" };
+    return { ...json, kind: "problem" };
+  }
+
+  async recordAuditObservation(
+    observation: AuditObservationRequest,
+    idempotencyKey: string,
+  ): Promise<AuditObservationResult | Problem> {
+    const resp = await this._fetch(`${this.hostname}/api/audit-observations`, {
+      method: "POST",
+      body: JSON.stringify(observation),
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+    });
+    const json = await resp.json();
+    if (resp.ok) return { ...json, kind: "audit-observation" };
     return { ...json, kind: "problem" };
   }
 
