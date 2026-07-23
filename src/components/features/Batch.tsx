@@ -35,9 +35,14 @@ import WarnModal from "../primitives/WarnModal";
 import FormSection from "../primitives/FormSection";
 import { labelClasses, inputClasses } from "../composites/SchemaFields";
 
-function Batch({ editable = false }: { editable?: boolean }) {
+function BatchDetails({
+  requestedId: batch_id,
+  editable = false,
+}: {
+  requestedId: string;
+  editable?: boolean;
+}) {
   const navigate = useNavigate();
-  const { id: batch_id } = useParams<{ id: string }>();
 
   const [showModal, setShowModal] = useState(false);
   const [saveState, setSaveState] = useState<"live" | "unsaved" | "saving">(
@@ -256,9 +261,9 @@ function Batch({ editable = false }: { editable?: boolean }) {
       <label className={labelClasses}>Batch Label</label>
       <div className="flex items-center gap-2 mb-6">
         <span className="text-xl font-mono">
-          <ItemLabel link={false} label={batch_id} />
+          <ItemLabel link={false} label={data.batch.state.id} />
         </span>
-        <PrintButton value={batch_id} />
+        <PrintButton value={data.batch.state.id} />
       </div>
 
       {/* Name */}
@@ -415,5 +420,13 @@ function Batch({ editable = false }: { editable?: boolean }) {
       </div>
     </div>
   );
+}
+
+function Batch({ editable = false }: { editable?: boolean }) {
+  const { id = "" } = useParams<{ id: string }>();
+
+  // Route input may be shorthand.  Re-mount so react-frontload never leaves a
+  // prior resource visible while this lookup resolves.
+  return <BatchDetails key={id} requestedId={id} editable={editable} />;
 }
 export default Batch;

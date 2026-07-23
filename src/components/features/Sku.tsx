@@ -28,8 +28,13 @@ import PropertiesTable, {
 import FormSection from "../primitives/FormSection";
 import { labelClasses, inputClasses } from "../composites/SchemaFields";
 
-function Sku({ editable = false }: { editable?: boolean }) {
-  const { id } = useParams<{ id: string }>();
+function SkuDetails({
+  requestedId: id,
+  editable = false,
+}: {
+  requestedId: string;
+  editable?: boolean;
+}) {
   const { data, frontloadMeta, setData } = useFrontload(
     "sku-component",
     async ({ api }: FrontloadContext) => {
@@ -190,9 +195,9 @@ function Sku({ editable = false }: { editable?: boolean }) {
       <label className={labelClasses}>SKU Label</label>
       <div className="flex items-center gap-2 mb-6 justify-between">
         <span className="text-xl font-mono">
-          <ItemLabel link={false} label={id} />
+          <ItemLabel link={false} label={data.sku.state.id} />
         </span>
-        <PrintButton value={id} />
+        <PrintButton value={data.sku.state.id} />
       </div>
 
       {/* Name */}
@@ -354,6 +359,14 @@ function Sku({ editable = false }: { editable?: boolean }) {
       </div>
     </div>
   );
+}
+
+function Sku({ editable = false }: { editable?: boolean }) {
+  const { id = "" } = useParams<{ id: string }>();
+
+  // Route input may be shorthand.  Re-mount so react-frontload never leaves a
+  // prior resource visible while this lookup resolves.
+  return <SkuDetails key={id} requestedId={id} editable={editable} />;
 }
 
 export default Sku;

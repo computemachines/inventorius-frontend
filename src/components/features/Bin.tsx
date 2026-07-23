@@ -21,7 +21,6 @@ import { FourOhFour } from "../primitives/FourOhFour";
 import ItemLabel from "../primitives/ItemLabel";
 import PrintButton from "../composites/PrintButton";
 import { Batch, Problem, Sku } from "../../api-client/data-models";
-import * as e from "express";
 
 function BinContentsTable({
   key = "",
@@ -103,12 +102,11 @@ function BinContentsTable({
     />
   );
 }
-function Bin(): React.ReactElement {
-  const { id } = useParams<{ id: string }>();
+function BinDetails({ requestedId }: { requestedId: string }): React.ReactElement {
   const { data, frontloadMeta } = useFrontload(
     "bin-component",
     async ({ api }: FrontloadContext) => ({
-      bin: await api.getBin(id),
+      bin: await api.getBin(requestedId),
     })
   );
   if (frontloadMeta.done && data.bin.kind == "problem") {
@@ -119,14 +117,21 @@ function Bin(): React.ReactElement {
   if (frontloadMeta.error) {
     return <div>Connection Error</div>;
   }
+  if (frontloadMeta.pending || data.bin.kind === "problem") {
+    return <div>Loading...</div>;
+  }
+
+  // Route input is only a lookup hint.  The persisted resource is the
+  // authority for both the visible label and the potentially physical print.
+  const canonicalBinId = data.bin.state.id;
 
   return (
     <div className="info-panel">
       <div className="info-item">
         <div className="info-item-title">Bin Label</div>
         <div className="info-item-description">
-          <ItemLabel link={false} label={id} />
-          <PrintButton value={id} />
+          <ItemLabel link={false} label={canonicalBinId} />
+          <PrintButton value={canonicalBinId} />
         </div>
       </div>
       <div className="info-item">
@@ -143,13 +148,23 @@ function Bin(): React.ReactElement {
 
             </DataTableRow>
           </DataTable> */}
-          {frontloadMeta.done && data.bin.kind != "problem" ? (
-            <BinContentsTable key={id} contents={data.bin.state.contents} />
-          ) : null}
+          <BinContentsTable
+            key={canonicalBinId}
+            contents={data.bin.state.contents}
+          />
         </div>
       </div>
     </div>
   );
+}
+
+function Bin(): React.ReactElement {
+  const { id = "" } = useParams<{ id: string }>();
+
+  // react-frontload keys its work per component instance.  A keyed body
+  // prevents a client-side route transition from retaining the previous
+  // resource while a new shorthand identifier resolves.
+  return <BinDetails key={id} requestedId={id} />;
 }
 
 export default Bin;
