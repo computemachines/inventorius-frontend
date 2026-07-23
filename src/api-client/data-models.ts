@@ -48,6 +48,8 @@ export interface Problem {
   kind: "problem";
   type: string;
   title: string;
+  detail?: string;
+  blocker?: string;
   "invalid-params"?: Array<{ name: string; reason: string }>;
 }
 
@@ -207,6 +209,99 @@ export interface InventoryOperationResult extends Status {
     destination_location_id?: string;
     observed_codes?: string[];
   };
+}
+
+export type InventoryReceiptQuantity = number | string | null;
+
+export interface InventoryOperationReceiptLeg {
+  batch_id: string;
+  location_id: string;
+  unit: string;
+  packaging_configuration_id: string | null;
+  quantity: InventoryReceiptQuantity;
+}
+
+export interface InventoryOperationReceiptHolding {
+  batch_id: string;
+  location_id: string;
+  unit: string;
+  packaging_configuration_id: string | null;
+  quantity: InventoryReceiptQuantity;
+}
+
+export interface InventoryOperationReceiptBatch {
+  batch_id: string;
+  batch_name: string | null;
+  sku_id: string | null;
+  sku_name: string | null;
+}
+
+/**
+ * The intentionally small, public subset of the command result retained with
+ * a receipt. Intake adds SKU/description fields; ordinary Receive does not.
+ */
+export interface InventoryOperationReceiptCommandResult {
+  operation_id?: string;
+  kind?: string;
+  batch_id?: string;
+  sku_id?: string;
+  location_id?: string;
+  bin_id?: string;
+  source_location_id?: string;
+  destination_location_id?: string;
+  quantity?: InventoryReceiptQuantity;
+  unit?: string;
+  packaging_configuration_id?: string | null;
+  observed_codes?: string[];
+  created_sku?: boolean;
+  provisional?: boolean;
+  description?: string;
+  mode?: string;
+  corrects_operation_id?: string;
+  original_state?: InventoryOperationReceiptState;
+  intended_state?: InventoryOperationReceiptState;
+}
+
+export interface InventoryOperationReceiptState {
+  batch_id?: string;
+  location_id?: string;
+  unit?: string;
+  packaging_configuration_id?: string | null;
+  quantity?: InventoryReceiptQuantity;
+}
+
+export interface InventoryOperationReceipt {
+  operation_id: string;
+  kind: string;
+  created_at: string | null;
+  legs: InventoryOperationReceiptLeg[];
+  result: InventoryOperationReceiptCommandResult;
+  batches: InventoryOperationReceiptBatch[];
+  current_holdings: InventoryOperationReceiptHolding[];
+  corrects_operation_id: string | null;
+  corrected_by_operation_id: string | null;
+  correction: {
+    correctable: boolean;
+    blocker: string | null;
+  };
+}
+
+export interface InventoryOperationReceiptResult {
+  kind: "inventory-operation-receipt";
+  status?: string;
+  state: InventoryOperationReceipt;
+}
+
+export interface InventoryOperationReceiptListResult {
+  kind: "inventory-operation-receipt-list";
+  state: {
+    operations: InventoryOperationReceipt[];
+  };
+}
+
+export interface InventoryOperationCorrectionRequest {
+  quantity: number;
+  location_id: string;
 }
 
 export interface InventoryCandidateMatch {

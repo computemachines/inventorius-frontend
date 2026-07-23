@@ -9,8 +9,12 @@
 import * as React from "react";
 import { useFrontload } from "react-frontload";
 import { FrontloadContext } from "../../api-client/api-client";
-import { Stats } from "../../api-client/data-models";
+import {
+  InventoryOperationReceipt,
+  Stats,
+} from "../../api-client/data-models";
 import ItemLabel from "../primitives/ItemLabel";
+import ReceiptTime from "../primitives/ReceiptTime";
 import { Link } from "react-router-dom";
 
 /**
@@ -22,8 +26,11 @@ function Home() {
   const { data, frontloadMeta } = useFrontload(
     "home-component",
     async ({ api }: FrontloadContext) => {
-      const stats = await api.getStats();
-      return { stats };
+      const [stats, recentActivity] = await Promise.all([
+        api.getStats(),
+        api.getInventoryOperations(6),
+      ]);
+      return { stats, recentActivity };
     }
   );
 
@@ -98,6 +105,47 @@ function Home() {
         </div>
       </div>
 
+      <section
+        aria-labelledby="recent-inventory-activity-heading"
+        className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6"
+      >
+        <h2
+          id="recent-inventory-activity-heading"
+          className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3"
+        >
+          Recent inventory activity
+        </h2>
+        {data.recentActivity.kind === "inventory-operation-receipt-list" &&
+        data.recentActivity.state.operations.length > 0 ? (
+            <ul className="divide-y divide-gray-100">
+              {data.recentActivity.state.operations.map((receipt) => (
+                <li key={receipt.operation_id}>
+                  <Link
+                    to={`/activity/${encodeURIComponent(receipt.operation_id)}`}
+                    className="flex flex-wrap items-baseline justify-between gap-x-4
+                    gap-y-1 py-2 text-[#04151f] hover:text-[#26532b]"
+                  >
+                    <span className="font-medium">
+                      {recentActivitySummary(receipt)}
+                    </span>
+                    <span className="text-xs text-[#6d635d]">
+                      <ReceiptTime value={receipt.created_at} />
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : data.recentActivity.kind === "problem" ? (
+            <p className="text-sm text-red-700">
+            Recent activity could not be loaded.
+            </p>
+          ) : (
+            <p className="text-gray-400 text-sm italic">
+            No inventory activity yet
+            </p>
+          )}
+      </section>
+
       {/* Recent Items */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Recent Bins */}
@@ -153,6 +201,46 @@ function Home() {
       </div>
     </div>
   );
+}
+
+function recentActivitySummary(receipt: InventoryOperationReceipt): string {
+  const batchId = receipt.result.batch_id ?? receipt.legs[0]?.batch_id;
+  const quantity =
+    receipt.result.quantity ??
+    receipt.legs.find((leg) => !String(leg.quantity).startsWith("-"))?.quantity;
+  const locationId =
+    receipt.result.location_id ??
+    receipt.result.bin_id ??
+    receipt.legs.find((leg) => !String(leg.quantity).startsWith("-"))
+      ?.location_id;
+  const unit = receipt.result.unit ?? receipt.legs[0]?.unit ?? "each";
+
+  if (receipt.kind === "receive") {
+    const verb =
+      typeof receipt.result.created_sku === "boolean" ? "Intake" : "Receive";
+    return `${verb}: ${quantity ?? "?"} ${unit} · ${batchId ?? "unknown Batch"} → ${locationId ?? "unknown Bin"}`;
+  }
+  if (receipt.kind === "release") {
+    return `Release: ${quantity ?? "?"} ${unit} · ${batchId ?? "unknown Batch"}`;
+  }
+  if (receipt.kind === "transfer") {
+    return `Move: ${quantity ?? "?"} ${unit} · ${batchId ?? "unknown Batch"}`;
+  }
+  if (receipt.kind === "correction") {
+    const original = receipt.result.original_state;
+    const intended = receipt.result.intended_state;
+    if (original && intended) {
+      return (
+        `Correction: ${original.batch_id ?? batchId ?? "unknown Batch"} · ` +
+        `${original.quantity ?? "?"} ${original.unit ?? "each"} in ` +
+        `${original.location_id ?? "unknown Bin"} → ` +
+        `${intended.quantity ?? "?"} ${intended.unit ?? "each"} in ` +
+        `${intended.location_id ?? "unknown Bin"}`
+      );
+    }
+    return `Correction · ${receipt.operation_id}`;
+  }
+  return `${receipt.kind} · ${receipt.operation_id}`;
 }
 
 function StatCard({

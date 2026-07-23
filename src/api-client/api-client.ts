@@ -22,6 +22,9 @@ import {
   IntakeRequest,
   IntakeResult,
   InventoryOperationCommand,
+  InventoryOperationCorrectionRequest,
+  InventoryOperationReceiptListResult,
+  InventoryOperationReceiptResult,
   InventoryOperationResult,
   InventoryCandidatesResult,
   AuditSnapshotResult,
@@ -254,6 +257,59 @@ export class ApiClient {
     });
     const json = await resp.json();
     if (resp.ok) return { ...json, kind: "status" };
+    return { ...json, kind: "problem" };
+  }
+
+  async getInventoryOperations(
+    limit = 8,
+  ): Promise<InventoryOperationReceiptListResult | Problem> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    const resp = await this._fetch(
+      `${this.hostname}/api/inventory-operations?${params.toString()}`,
+    );
+    const json = await resp.json();
+    if (resp.ok) {
+      return { ...json, kind: "inventory-operation-receipt-list" };
+    }
+    return { ...json, kind: "problem" };
+  }
+
+
+  async getInventoryOperation(
+    operationId: string,
+  ): Promise<InventoryOperationReceiptResult | Problem> {
+    const resp = await this._fetch(
+      `${this.hostname}/api/inventory-operations/${encodeURIComponent(operationId)}`,
+    );
+    const json = await resp.json();
+    if (resp.ok) {
+      return { ...json, kind: "inventory-operation-receipt" };
+    }
+    return { ...json, kind: "problem" };
+  }
+
+
+  async correctInventoryOperation(
+    operationId: string,
+    correction: InventoryOperationCorrectionRequest,
+    idempotencyKey: string,
+  ): Promise<InventoryOperationReceiptResult | Problem> {
+    const resp = await this._fetch(
+      `${this.hostname}/api/inventory-operations/` +
+        `${encodeURIComponent(operationId)}/corrections`,
+      {
+        method: "POST",
+        body: JSON.stringify(correction),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+      },
+    );
+    const json = await resp.json();
+    if (resp.ok) {
+      return { ...json, kind: "inventory-operation-receipt" };
+    }
     return { ...json, kind: "problem" };
   }
 

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
 import { parse } from "query-string";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { ApiContext } from "../../api-client/api-client";
 import { normalizeInventoriusId } from "../../identifiers";
@@ -95,7 +95,13 @@ export default function QuickCapture() {
           <p>
             Captured {response.state.quantity} × {response.state.description} as{" "}
             <ItemLabel label={response.state.sku_id} /> in{" "}
-            <ItemLabel label={response.state.bin_id} />.
+            <ItemLabel label={response.state.bin_id} />.{" "}
+            <Link
+              className="font-semibold underline"
+              to={`/activity/${encodeURIComponent(response.state.operation_id)}`}
+            >
+              Review or correct
+            </Link>
           </p>
         ),
         mode: "success",

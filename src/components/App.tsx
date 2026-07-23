@@ -35,6 +35,7 @@ import QuickCapture from "./features/QuickCapture";
 import NewProcessDefinition from "./features/NewProcessDefinition";
 import ProcessDefinition from "./features/ProcessDefinition";
 import ProcessDefinitionList from "./features/ProcessDefinitionList";
+import InventoryActivity from "./features/InventoryActivity";
 
 /**
  * Main app component
@@ -87,6 +88,10 @@ function App() {
                 <Route path="/capture" element={<QuickCapture />} />
                 <Route path="/release" element={<Release />} />
                 <Route path="/audit" element={<Audit />} />
+                <Route
+                  path="/activity/:operationId"
+                  element={<InventoryActivity />}
+                />
                 <Route path="/move" element={<MoveItem />} />
                 <Route path="/search" element={<SearchForm />} />
                 <Route path="/legal" element={<EULA />} />

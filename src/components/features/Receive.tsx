@@ -120,7 +120,13 @@ export default function Receive() {
           content: (
             <p>
               Received {count} × <ItemLabel label={chosenBatchId} /> into{" "}
-              <ItemLabel label={destination} />.
+              <ItemLabel label={destination} />.{" "}
+              <Link
+                className="font-semibold underline"
+                to={`/activity/${encodeURIComponent(response.state.operation_id)}`}
+              >
+                Review or correct
+              </Link>
             </p>
           ),
           mode: "success",
@@ -144,7 +150,13 @@ export default function Receive() {
             <p>
               Received {count} × new <ItemLabel label={response.state.batch_id} />
               {" under "}<ItemLabel label={chosenSkuId} /> into{" "}
-              <ItemLabel label={destination} />.
+              <ItemLabel label={destination} />.{" "}
+              <Link
+                className="font-semibold underline"
+                to={`/activity/${encodeURIComponent(response.state.operation_id)}`}
+              >
+                Review or correct
+              </Link>
             </p>
           ),
           mode: "success",
