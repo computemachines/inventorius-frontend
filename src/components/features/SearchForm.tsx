@@ -53,6 +53,9 @@ function SearchForm() {
   return (
     <div className="search-form">
       <form onSubmit={submitSearch} autoComplete="off">
+        <label htmlFor="query" className="sr-only">
+          Search inventory
+        </label>
         <input
           type="text"
           name="query"

@@ -734,6 +734,41 @@ export class NextBin extends RestEndpoint {
 }
 
 export type SearchResult = SkuState | BatchState | BinState;
+
+/**
+ * Evidence explaining why a returned resource was included in a search.
+ *
+ * Search resources deliberately retain their ordinary API shapes. This
+ * parallel projection keeps result-specific search evidence out of SKU, Batch,
+ * and Bin state while allowing the UI to say why a scanner or keyword matched.
+ */
+export interface SearchMatchReason {
+  kind:
+    | "exact-code"
+    | "internal-label"
+    | "identifier-fragment"
+    | "name-fragment"
+    | "code-fragment"
+    | "debug";
+  value: string;
+  scope: "sku" | "batch" | "bin";
+  relationship?: "owned" | "associated" | "observed";
+}
+
+/** One positive canonical ledger holding shown with a search result. */
+export interface SearchResultLocation {
+  location_id: string;
+  batch_id: string;
+  quantity: number | string;
+  unit: string | null;
+  packaging_configuration_id: string | null;
+}
+
+export interface SearchResultDetail {
+  matched_by: SearchMatchReason[];
+  locations: SearchResultLocation[];
+}
+
 export class SearchResults extends RestEndpoint {
   kind: "search-results" = "search-results";
   state: {
@@ -742,6 +777,8 @@ export class SearchResults extends RestEndpoint {
     limit: number;
     returned_num_results: number;
     results: SearchResult[];
+    /** Page-local details keyed by canonical resource identity. */
+    details?: Record<string, SearchResultDetail>;
   };
   operations: null;
 }
