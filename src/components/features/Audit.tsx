@@ -6,9 +6,11 @@ import { ApiContext } from "../../api-client/api-client";
 import {
   AuditObservationRequest,
   AuditObservationState,
+  AuditReconciliationRequest,
   AuditSnapshotBlocker,
   AuditSnapshotHolding,
   AuditSnapshotResult,
+  InventoryOperationReceipt,
 } from "../../api-client/data-models";
 import { normalizeInventoriusId } from "../../identifiers";
 import { Code } from "../composites/CodesInput";
@@ -61,6 +63,35 @@ function holdingName(holding: AuditSnapshotHolding): string {
 
 function recordedQuantity(holding: AuditSnapshotHolding): string {
   return `${String(holding.quantity)} ${holding.unit}`;
+}
+
+function isNonzeroQuantity(value: number | string): boolean {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) && parsed !== 0;
+}
+
+function reconciliationRejectionMessage(
+  blocker: string | undefined,
+  detail: string | undefined,
+): string {
+  switch (blocker) {
+  case "snapshot-stale":
+    return "Canonical holdings changed after this count was recorded. The audit observation is still preserved, but reconciliation was not applied. Recount the bin before changing inventory.";
+  case "snapshot-blocked":
+    return "The current inventory contains data this reconciliation cannot safely represent. The audit observation is still preserved. Resolve the blocker, then recount the bin before changing inventory.";
+  case "unresolved-evidence":
+    return "This observation contains unresolved physical evidence, so inventory was not changed. Recount the bin and resolve that evidence before reconciling.";
+  case "no-variance":
+    return "The physical count already matches canonical holdings, so there is no unexplained variance to reconcile.";
+  case "already-reconciled":
+    return "This observation already has a reconciliation. No second inventory change was made; start a new count before making any further change.";
+  case "insufficient-holding":
+    return "The recorded inventory is no longer available, so reconciliation was not applied. The audit observation is still preserved; recount the bin.";
+  default:
+    return `${
+      detail || "The reconciliation was rejected."
+    } The audit observation is still preserved; recount the bin before trying another inventory change.`;
+  }
 }
 
 function expectedClassification(
@@ -163,7 +194,8 @@ function CountingStatus({
 
 export default function Audit() {
   const api = React.useContext(ApiContext);
-  const idempotency = useCommandIdempotency();
+  const observationIdempotency = useCommandIdempotency();
+  const reconciliationIdempotency = useCommandIdempotency();
   const location = useLocation();
   const navigate = useNavigate();
   const binInput = React.useRef<HTMLInputElement>(null);
@@ -171,6 +203,7 @@ export default function Audit() {
   const loadGeneration = React.useRef(0);
   const reviewGeneration = React.useRef(0);
   const recordGeneration = React.useRef(0);
+  const reconciliationGeneration = React.useRef(0);
 
   const [binId, setBinId] = React.useState("");
   const [snapshot, setSnapshot] = React.useState<AuditSnapshotResult | null>(
@@ -188,10 +221,15 @@ export default function Audit() {
     React.useState("");
   const [recordedObservation, setRecordedObservation] =
     React.useState<AuditObservationState | null>(null);
+  const [reconciliationNote, setReconciliationNote] = React.useState("");
+  const [reconciliationReceipt, setReconciliationReceipt] =
+    React.useState<InventoryOperationReceipt | null>(null);
+  const [reconciliationError, setReconciliationError] = React.useState("");
   const [phase, setPhase] = React.useState<AuditPhase>("counting");
   const [loading, setLoading] = React.useState(false);
   const [reviewing, setReviewing] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
+  const [reconciling, setReconciling] = React.useState(false);
   const [error, setError] = React.useState("");
 
   const resetCount = React.useCallback((nextSnapshot: AuditSnapshotResult) => {
@@ -202,6 +240,9 @@ export default function Audit() {
     setSelectedBatchId("");
     setPendingUnexpectedCount("");
     setRecordedObservation(null);
+    setReconciliationNote("");
+    setReconciliationReceipt(null);
+    setReconciliationError("");
     setPhase("counting");
   }, []);
 
@@ -210,9 +251,11 @@ export default function Audit() {
       const generation = ++loadGeneration.current;
       ++reviewGeneration.current;
       ++recordGeneration.current;
+      ++reconciliationGeneration.current;
       setLoading(true);
       setReviewing(false);
       setRecording(false);
+      setReconciling(false);
       setError("");
       setSnapshot(null);
 
@@ -246,11 +289,16 @@ export default function Audit() {
       ++loadGeneration.current;
       ++reviewGeneration.current;
       ++recordGeneration.current;
+      ++reconciliationGeneration.current;
       setSnapshot(null);
       setLoading(false);
       setReviewing(false);
       setRecording(false);
+      setReconciling(false);
       setRecordedObservation(null);
+      setReconciliationNote("");
+      setReconciliationReceipt(null);
+      setReconciliationError("");
       setError("Scan or enter a valid BIN label.");
       return;
     }
@@ -363,6 +411,21 @@ export default function Audit() {
       unexpectedCounts,
       unresolvedEvidence,
     ]);
+  const recordedHasVariance =
+    recordedObservation?.counts.some(({ difference }) =>
+      isNonzeroQuantity(difference),
+    ) ?? false;
+  const recordedHasUnresolvedEvidence =
+    (recordedObservation?.unresolved_evidence.length ?? 0) > 0;
+  const reconciledOperationId =
+    reconciliationReceipt?.operation_id ??
+    recordedObservation?.reconciled_by_operation_id ??
+    null;
+  const canReconcile =
+    !!recordedObservation &&
+    recordedHasVariance &&
+    !recordedHasUnresolvedEvidence &&
+    !reconciledOperationId;
 
   const addUnexpected = () => {
     if (
@@ -423,7 +486,7 @@ export default function Audit() {
     try {
       const response = await api.recordAuditObservation(
         observationCommand,
-        idempotency.keyFor(observationCommand),
+        observationIdempotency.keyFor(observationCommand),
       );
       if (generation !== recordGeneration.current) return;
 
@@ -443,7 +506,7 @@ export default function Audit() {
         return;
       }
 
-      idempotency.clear();
+      observationIdempotency.clear();
       setRecordedObservation(response.state);
       setPhase("recorded");
     } catch {
@@ -456,10 +519,76 @@ export default function Audit() {
     }
   };
 
+  const reconcileCount = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!recordedObservation || !canReconcile || reconciling) return;
+
+    const disposition: AuditReconciliationRequest = {
+      reason: "unexplained-variance",
+      ...(reconciliationNote.trim()
+        ? { note: reconciliationNote.trim() }
+        : {}),
+    };
+    const commandIdentity = {
+      observation_id: recordedObservation.observation_id,
+      ...disposition,
+    };
+    const generation = ++reconciliationGeneration.current;
+    setReconciling(true);
+    setReconciliationError("");
+    try {
+      const response = await api.reconcileAuditObservation(
+        recordedObservation.observation_id,
+        disposition,
+        reconciliationIdempotency.keyFor(commandIdentity),
+      );
+      if (generation !== reconciliationGeneration.current) return;
+
+      if (response.kind === "problem") {
+        if (response.type === "audit-reconciliation-rejected") {
+          setReconciliationError(
+            reconciliationRejectionMessage(response.blocker, response.detail),
+          );
+        } else {
+          const reason = [response.title, response.detail]
+            .filter((value): value is string => Boolean(value))
+            .map((value) => value.trim().replace(/[.]+$/, ""))
+            .join(". ");
+          setReconciliationError(
+            `${reason}. The audit observation and your note are still here.`,
+          );
+        }
+        return;
+      }
+
+      reconciliationIdempotency.clear();
+      setReconciliationReceipt(response.state);
+      setRecordedObservation((observation) =>
+        observation
+          ? {
+            ...observation,
+            reconciled_by_operation_id: response.state.operation_id,
+          }
+          : observation,
+      );
+      setReconciliationError("");
+    } catch {
+      if (generation !== reconciliationGeneration.current) return;
+      setReconciliationError(
+        "The reconciliation could not be confirmed. The audit observation, note, and retry identity are still here; retry without changing the note.",
+      );
+    } finally {
+      if (generation === reconciliationGeneration.current) {
+        setReconciling(false);
+      }
+    }
+  };
+
   const startAnotherBin = () => {
     ++loadGeneration.current;
     ++reviewGeneration.current;
     ++recordGeneration.current;
+    ++reconciliationGeneration.current;
     handledQueryBin.current = null;
     setBinId("");
     setSnapshot(null);
@@ -469,10 +598,14 @@ export default function Audit() {
     setSelectedBatchId("");
     setPendingUnexpectedCount("");
     setRecordedObservation(null);
+    setReconciliationNote("");
+    setReconciliationReceipt(null);
+    setReconciliationError("");
     setPhase("counting");
     setLoading(false);
     setReviewing(false);
     setRecording(false);
+    setReconciling(false);
     setError("");
     navigate("/audit", { replace: true });
     globalThis.requestAnimationFrame(() => binInput.current?.focus());
@@ -514,7 +647,7 @@ export default function Audit() {
           />
           <button
             type="submit"
-            disabled={loading || recording}
+            disabled={loading || recording || reconciling}
             className={`${submitClasses} sm:w-auto sm:min-w-36`}
           >
             {loading ? "Loading…" : "Load bin"}
@@ -554,7 +687,7 @@ export default function Audit() {
             <p className="text-lg font-bold">Physical evidence recorded</p>
             <p className="mt-2">
               Observation{" "}
-              <code className="font-semibold">
+              <code className="break-all font-semibold">
                 {recordedObservation.observation_id}
               </code>
             </p>
@@ -566,13 +699,193 @@ export default function Audit() {
               inventory.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={startAnotherBin}
-            className={`${submitClasses} sm:w-auto sm:min-w-44`}
-          >
-            Count next bin
-          </button>
+
+          {reconciliationError && (
+            <div
+              role="alert"
+              className="mb-5 rounded-md border border-red-300 bg-red-50 px-4
+                py-3 text-red-800"
+            >
+              {reconciliationError}
+            </div>
+          )}
+
+          {reconciliationReceipt ? (
+            <section
+              aria-labelledby="audit-reconciliation-recorded-title"
+              className="mb-6 rounded-md border border-green-300 bg-green-50
+                px-4 py-4 text-green-950"
+            >
+              <h3
+                id="audit-reconciliation-recorded-title"
+                className="text-lg font-bold"
+              >
+                Inventory reconciled to the physical count
+              </h3>
+              <p className="mt-2">
+                Operation{" "}
+                <Link
+                  className="break-all font-semibold underline"
+                  to={`/activity/${encodeURIComponent(
+                    reconciliationReceipt.operation_id,
+                  )}`}
+                >
+                  {reconciliationReceipt.operation_id}
+                </Link>{" "}
+                was recorded{" "}
+                <ReceiptTime value={reconciliationReceipt.created_at} />.
+              </p>
+              <p className="mt-3 text-sm font-semibold">
+                Canonical holdings now match the observed quantities. The
+                operation records the differences as unexplained inventory
+                variance; it does not establish a cause.
+              </p>
+              <button
+                type="button"
+                onClick={startAnotherBin}
+                className={`${submitClasses} mt-4 sm:w-auto sm:min-w-44`}
+              >
+                Count next bin
+              </button>
+            </section>
+          ) : reconciledOperationId ? (
+            <section
+              aria-labelledby="audit-already-reconciled-title"
+              className="mb-6 rounded-md border border-blue-300 bg-blue-50 px-4
+                py-4 text-blue-950"
+            >
+              <h3 id="audit-already-reconciled-title" className="font-bold">
+                Inventory was already reconciled
+              </h3>
+              <p className="mt-2">
+                This observation is linked to operation{" "}
+                <Link
+                  className="break-all font-semibold underline"
+                  to={`/activity/${encodeURIComponent(reconciledOperationId)}`}
+                >
+                  {reconciledOperationId}
+                </Link>
+                . No second inventory change is available from this count.
+              </p>
+              <button
+                type="button"
+                onClick={startAnotherBin}
+                className={`${submitClasses} mt-4 sm:w-auto sm:min-w-44`}
+              >
+                Count next bin
+              </button>
+            </section>
+          ) : recordedHasUnresolvedEvidence ? (
+            <section
+              aria-labelledby="audit-reconciliation-unresolved-title"
+              className="mb-6 rounded-md border border-amber-300 bg-amber-50
+                px-4 py-4 text-amber-950"
+            >
+              <h3
+                id="audit-reconciliation-unresolved-title"
+                className="font-bold"
+              >
+                Reconciliation unavailable
+              </h3>
+              <p className="mt-2">
+                This observation preserves unresolved physical evidence.
+                Inventory cannot be changed from an incomplete count. Recount
+                the bin and resolve that evidence first.
+              </p>
+              <button
+                type="button"
+                onClick={startAnotherBin}
+                className={`${submitClasses} mt-4 sm:w-auto sm:min-w-44`}
+              >
+                Count next bin
+              </button>
+            </section>
+          ) : !recordedHasVariance ? (
+            <section
+              aria-labelledby="audit-reconciliation-matched-title"
+              className="mb-6 rounded-md border border-blue-300 bg-blue-50 px-4
+                py-4 text-blue-950"
+            >
+              <h3
+                id="audit-reconciliation-matched-title"
+                className="font-bold"
+              >
+                Reconciliation unavailable
+              </h3>
+              <p className="mt-2">
+                The physical count matched canonical holdings. There is no
+                unexplained variance to apply.
+              </p>
+              <button
+                type="button"
+                onClick={startAnotherBin}
+                className={`${submitClasses} mt-4 sm:w-auto sm:min-w-44`}
+              >
+                Count next bin
+              </button>
+            </section>
+          ) : (
+            <>
+              <form
+                onSubmit={reconcileCount}
+                aria-labelledby="audit-reconciliation-title"
+                className="mb-4 rounded-md border-2 border-amber-400 bg-amber-50
+                  px-4 py-4 text-amber-950"
+              >
+                <h3 id="audit-reconciliation-title" className="text-lg font-bold">
+                  Reconcile inventory to this count
+                </h3>
+                <p className="mt-2 font-semibold">
+                  This action changes canonical holdings to the observed
+                  quantities and records the differences as unexplained
+                  inventory variance. It does not establish why the variance
+                  occurred.
+                </p>
+                <label
+                  htmlFor="audit-reconciliation-note"
+                  className={`${labelClasses} mt-4`}
+                >
+                  Note (optional)
+                </label>
+                <textarea
+                  id="audit-reconciliation-note"
+                  value={reconciliationNote}
+                  onChange={(event) =>
+                    setReconciliationNote(event.target.value)
+                  }
+                  maxLength={500}
+                  rows={3}
+                  disabled={reconciling}
+                  className={inputClasses}
+                />
+                <p className="mt-1.5 text-sm">
+                  Record useful counting context without claiming a cause that
+                  is not known.
+                </p>
+                <button
+                  type="submit"
+                  disabled={reconciling}
+                  className="mt-4 w-full rounded-md bg-amber-900 px-5 py-3
+                    font-semibold text-white hover:bg-amber-950
+                    disabled:cursor-wait disabled:opacity-60 sm:w-auto"
+                >
+                  {reconciling
+                    ? "Reconciling inventory…"
+                    : "Reconcile inventory to physical count"}
+                </button>
+              </form>
+              <button
+                type="button"
+                disabled={reconciling}
+                onClick={startAnotherBin}
+                className="rounded-md border border-[#26532b] bg-white px-5 py-3
+                  font-semibold text-[#26532b] hover:bg-green-50
+                  disabled:cursor-wait disabled:opacity-60"
+              >
+                Count next bin without reconciling
+              </button>
+            </>
+          )}
         </section>
       )}
 

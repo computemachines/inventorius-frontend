@@ -29,6 +29,7 @@ import {
   InventoryCandidatesResult,
   AuditObservationRequest,
   AuditObservationResult,
+  AuditReconciliationRequest,
   AuditSnapshotResult,
   ProcessDefinition,
   ProcessDefinitionState,
@@ -378,6 +379,30 @@ export class ApiClient {
     });
     const json = await resp.json();
     if (resp.ok) return { ...json, kind: "audit-observation" };
+    return { ...json, kind: "problem" };
+  }
+
+  async reconcileAuditObservation(
+    observationId: string,
+    reconciliation: AuditReconciliationRequest,
+    idempotencyKey: string,
+  ): Promise<InventoryOperationReceiptResult | Problem> {
+    const resp = await this._fetch(
+      `${this.hostname}/api/audit-observations/` +
+        `${encodeURIComponent(observationId)}/reconciliation`,
+      {
+        method: "POST",
+        body: JSON.stringify(reconciliation),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+      },
+    );
+    const json = await resp.json();
+    if (resp.ok) {
+      return { ...json, kind: "inventory-operation-receipt" };
+    }
     return { ...json, kind: "problem" };
   }
 

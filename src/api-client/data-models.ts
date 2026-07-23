@@ -258,6 +258,11 @@ export interface InventoryOperationReceiptCommandResult {
   description?: string;
   mode?: string;
   corrects_operation_id?: string;
+  observation_id?: string;
+  snapshot_token?: string;
+  reason?: string;
+  note?: string;
+  boundary?: string;
   original_state?: InventoryOperationReceiptState;
   intended_state?: InventoryOperationReceiptState;
 }
@@ -279,6 +284,7 @@ export interface InventoryOperationReceipt {
   batches: InventoryOperationReceiptBatch[];
   current_holdings: InventoryOperationReceiptHolding[];
   corrects_operation_id: string | null;
+  reconciles_observation_id: string | null;
   corrected_by_operation_id: string | null;
   correction: {
     correctable: boolean;
@@ -478,12 +484,18 @@ export interface AuditObservationState {
   recorded_at: string;
   counts: AuditObservationRecordedCount[];
   unresolved_evidence: string[];
+  reconciled_by_operation_id?: string;
 }
 
 export interface AuditObservationResult {
   kind: "audit-observation";
   status?: string;
   state: AuditObservationState;
+}
+
+export interface AuditReconciliationRequest {
+  reason: "unexplained-variance";
+  note?: string;
 }
 
 class RestEndpoint {
