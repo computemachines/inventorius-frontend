@@ -83,6 +83,41 @@ export interface BinCreationProblem extends Problem {
   httpStatus: number;
 }
 
+export interface ResourceCreationResult extends Status {
+  /**
+   * Canonical persisted identity returned by the server.
+   *
+   * Creation forms deliberately use this value, rather than an identifier
+   * prediction, as the only printable identity.
+   */
+  state: {
+    id: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface ResourceCreationProblem extends Problem {
+  /** Preserve the transport status so callers can distinguish rejection from uncertainty. */
+  httpStatus: number;
+}
+
+export interface SkuCreationRequest {
+  id?: string;
+  name: string;
+  props?: unknown;
+  owned_codes?: string[];
+  associated_codes?: string[];
+}
+
+export interface BatchCreationRequest {
+  id?: string;
+  sku_id?: string;
+  name?: string;
+  owned_codes?: string[];
+  associated_codes?: string[];
+  props?: unknown;
+}
+
 interface IntakeState {
   sku_id: string;
   batch_id: string;
@@ -558,30 +593,6 @@ export class ProcessDefinition extends RestEndpoint {
 
 export class NextBin extends RestEndpoint {
   kind: "next-bin" = "next-bin";
-  state: string;
-  operations: {
-    create: CallableRestOperation;
-  };
-
-  create(): Promise<Response> {
-    return this.operations.create.perform({ json: { id: this.state } });
-  }
-}
-
-export class NextSku extends RestEndpoint {
-  kind: "next-sku" = "next-sku";
-  state: string;
-  operations: {
-    create: CallableRestOperation;
-  };
-
-  create(): Promise<Response> {
-    return this.operations.create.perform({ json: { id: this.state } });
-  }
-}
-
-export class NextBatch extends RestEndpoint {
-  kind: "next-batch" = "next-batch";
   state: string;
   operations: {
     create: CallableRestOperation;

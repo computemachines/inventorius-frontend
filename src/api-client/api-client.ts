@@ -8,8 +8,6 @@ import {
   Problem,
   Sku,
   SearchResults,
-  NextSku,
-  NextBatch,
   Batch,
   ApiStatus,
   BinCreationProblem,
@@ -29,6 +27,10 @@ import {
   ProcessDefinition,
   ProcessDefinitionState,
   ProcessDefinitionWrite,
+  SkuCreationRequest,
+  BatchCreationRequest,
+  ResourceCreationResult,
+  ResourceCreationProblem,
 } from "./data-models";
 
 export interface FrontloadContext {
@@ -134,22 +136,6 @@ export class ApiClient {
   }
 
 
-  async getNextSku(): Promise<NextSku> {
-    const resp = await this._fetch(`${this.hostname}/api/next/sku`);
-    const json = await resp.json();
-    if (!resp.ok) throw Error(`${this.hostname}/api/next/sku returned error status`);
-    return new NextSku({ ...json, hostname: this.hostname });
-  }
-
-
-  async getNextBatch(): Promise<NextBatch> {
-    const resp = await this._fetch(`${this.hostname}/api/next/batch`);
-    const json = await resp.json();
-    if (!resp.ok) throw Error(`${this.hostname}/api/next/sku returned error status`);
-    return new NextBatch({ ...json, hostname: this.hostname });
-  }
-
-
   async getSearchResults(params: {
     query: string;
     limit?: string;
@@ -203,25 +189,23 @@ export class ApiClient {
   }
 
 
-  async createSku(params: {
-    id: string;
-    name: string;
-    props?: unknown;
-    owned_codes?: string[];
-    associated_codes?: string[];
-  }): Promise<Status | Problem> {
+  async createSku(
+    params: SkuCreationRequest,
+    idempotencyKey: string,
+  ): Promise<ResourceCreationResult | ResourceCreationProblem> {
     const resp = await this._fetch(`${this.hostname}/api/skus`, {
       method: "POST",
       body: JSON.stringify(params),
       headers: {
         "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
       },
     });
     const json = await resp.json();
     if (resp.ok) {
       return { ...json, kind: "status" };
     } else {
-      return { ...json, kind: "problem" };
+      return { ...json, kind: "problem", httpStatus: resp.status };
     }
   }
 
@@ -234,26 +218,23 @@ export class ApiClient {
   }
 
 
-  async createBatch(params: {
-    id: string;
-    sku_id?: string;
-    name?: string;
-    owned_codes?: string[];
-    associated_codes?: string[];
-    props?: unknown;
-  }): Promise<Status | Problem> {
+  async createBatch(
+    params: BatchCreationRequest,
+    idempotencyKey: string,
+  ): Promise<ResourceCreationResult | ResourceCreationProblem> {
     const resp = await this._fetch(`${this.hostname}/api/batches`, {
       method: "POST",
       body: JSON.stringify(params),
       headers: {
         "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
       },
     });
     const json = await resp.json();
     if (resp.ok) {
       return { ...json, kind: "status" };
     } else {
-      return { ...json, kind: "problem" };
+      return { ...json, kind: "problem", httpStatus: resp.status };
     }
   }
 
