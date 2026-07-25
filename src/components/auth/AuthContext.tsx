@@ -5,12 +5,14 @@ import { useFrontload } from "react-frontload";
 import type { AuthSessionResource } from "../../api-client/auth-contracts";
 import type { FrontloadContext } from "../../api-client/api-client";
 import { ApiContext } from "../../api-client/api-client";
+import type { RestOperation } from "../../api-client/data-models";
 
 type AuthContextValue = {
   session: AuthSessionResource | null;
   pending: boolean;
   hasOperation: (rel: string) => boolean;
   hasAuthOperation: (rel: string) => boolean;
+  authOperation: (rel: string) => RestOperation | undefined;
 };
 
 const AuthContext = createContext<AuthContextValue>({
@@ -18,6 +20,7 @@ const AuthContext = createContext<AuthContextValue>({
   pending: true,
   hasOperation: () => false,
   hasAuthOperation: () => false,
+  authOperation: () => undefined,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -49,6 +52,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ) ?? false,
         hasAuthOperation: (rel) =>
           session?.operations.some((operation) => operation.rel === rel) ?? false,
+        authOperation: (rel) =>
+          session?.operations.find((operation) => operation.rel === rel),
       }}
     >
       {children}

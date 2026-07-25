@@ -38,6 +38,7 @@ import {
   BatchCreationRequest,
   ResourceCreationResult,
   ResourceCreationProblem,
+  RestOperation,
 } from "./data-models";
 import type {
   AuthProblem,
@@ -395,6 +396,19 @@ export class ApiClient {
       `${this.hostname}/api/auth/passkeys/authentication/options`,
       { method: "POST" }
     );
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async localLogin(
+    operation: RestOperation,
+    token: string
+  ): Promise<AuthVerificationResult | AuthProblem> {
+    const response = await this._fetch(`${this.hostname}${operation.href}`, {
+      method: operation.method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
     const json = await response.json();
     return response.ok ? json : { ...json, kind: "problem" };
   }
