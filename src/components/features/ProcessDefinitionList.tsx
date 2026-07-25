@@ -11,6 +11,7 @@ import {
 } from "../../api-client/data-models";
 import { inputClasses, labelClasses } from "../composites/SchemaFields";
 import PageHeading from "../primitives/PageHeading";
+import { useAuth } from "../auth/AuthContext";
 import { PROCESS_KIND_LABELS } from "./ProcessDefinitionForm";
 
 
@@ -26,6 +27,7 @@ function requirementSummary(requirements: ProcessRequirement[]) {
 
 export default function ProcessDefinitionList() {
   const [query, setQuery] = useState("");
+  const { hasOperation } = useAuth();
   const { data, frontloadMeta } = useFrontload(
     "process-definition-list",
     async ({ api }: FrontloadContext) => ({
@@ -59,12 +61,14 @@ export default function ProcessDefinitionList() {
             inspectable process run.
           </p>
         </div>
-        <Link
-          to="/processes/new"
-          className="shrink-0 rounded-md bg-[#26532b] px-4 py-2 font-semibold text-white hover:bg-[#1e4423]"
-        >
-          New process
-        </Link>
+        {hasOperation("define-process") && (
+          <Link
+            to="/processes/new"
+            className="shrink-0 rounded-md bg-[#26532b] px-4 py-2 font-semibold text-white hover:bg-[#1e4423]"
+          >
+            New process
+          </Link>
+        )}
       </div>
 
       <label htmlFor="process-filter" className={labelClasses}>
@@ -107,12 +111,14 @@ export default function ProcessDefinitionList() {
                     <span>{PROCESS_KIND_LABELS[definition.kind]}</span>
                   </div>
                 </div>
-                <Link
-                  to={`/processes/${definition.id}/edit`}
-                  className="rounded border border-[#cdd2d6] px-3 py-1.5 text-sm font-medium text-[#04151f] hover:bg-[#cdd2d6]"
-                >
-                  Edit
-                </Link>
+                {hasOperation("define-process") && (
+                  <Link
+                    to={`/processes/${definition.id}/edit`}
+                    className="rounded border border-[#cdd2d6] px-3 py-1.5 text-sm font-medium text-[#04151f] hover:bg-[#cdd2d6]"
+                  >
+                    Edit
+                  </Link>
+                )}
               </div>
               {definition.description && (
                 <p className="mt-3 text-sm text-[#04151f]">{definition.description}</p>

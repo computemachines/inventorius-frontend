@@ -12,6 +12,7 @@ import {
 import { StaticRouter } from "react-router-dom";
 import * as path from "path";
 import * as cors from "cors";
+import { randomBytes } from "crypto";
 
 import * as Sentry from "@sentry/node";
 
@@ -75,6 +76,7 @@ Sentry.init({
 function htmlTemplate(
   app: string,
   frontloadServerData,
+  nonce,
   dev = false,
   noclient = false
 ) {
@@ -88,7 +90,7 @@ function htmlTemplate(
     </head>
     <body>
         <div id="react-root">${app}</div>
-        <script>
+        <script nonce="${nonce}">
             window.__DEV_MODE = ${dev}
               // WARNING: See the following for security issues around embedding JSON in HTML:
               // http://redux.js.org/recipes/ServerRendering.html#security-considerations
@@ -96,7 +98,7 @@ function htmlTemplate(
               frontloadServerData
             ).replace(/</g, "\\u003c")}
         </script>
-        ${!noclient ? '<script src="/assets/client.bundle.js"></script>' : ""}
+        ${!noclient ? `<script nonce="${nonce}" src="/assets/client.bundle.js"></script>` : ""}
     </body>
     </html>`;
 }
@@ -117,9 +119,25 @@ app.get("/*", cors(), async function (req, res) {
   console.log(`[ssr] ${req.method} ${req.url}`);
 
   const frontloadState = createFrontloadState.server({
-    context: { api: new ApiClient(API_HOSTNAME) },
+    context: {
+      api: new ApiClient(API_HOSTNAME, { cookie: req.headers.cookie }),
+    },
     logging: dev,
   });
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Vary", "Cookie");
+  const nonce = randomBytes(18).toString("base64");
+  res.setHeader(
+    "Content-Security-Policy",
+    `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://*.ingest.sentry.io; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`
+  );
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "same-origin");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader(
+    "Permissions-Policy",
+    "publickey-credentials-create=(self), publickey-credentials-get=(self)"
+  );
 
   let statusState: ServerStatus = {
     statusCode: 200,
@@ -141,7 +159,7 @@ app.get("/*", cors(), async function (req, res) {
     });
 
     console.log(`[ssr] ${req.url} → ${statusState.statusCode} (${Date.now() - start}ms)`);
-    const complete_page = htmlTemplate(rendered, data, dev, noclient);
+    const complete_page = htmlTemplate(rendered, data, nonce, dev, noclient);
     res.status(statusState.statusCode).send(complete_page);
   } catch (err) {
     console.error(`[ssr] ${req.url} → ERROR (${Date.now() - start}ms)`, err);

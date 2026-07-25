@@ -39,6 +39,14 @@ import {
   ResourceCreationResult,
   ResourceCreationProblem,
 } from "./data-models";
+import type {
+  AuthProblem,
+  ApplicationRootResource,
+  AuthSessionResource,
+  AuthVerificationResult,
+  PasskeyCeremony,
+  PasskeyCredentialJSON,
+} from "./auth-contracts";
 
 export interface FrontloadContext {
   api: ApiClient;
@@ -49,19 +57,37 @@ export interface FrontloadContext {
  */
 export class ApiClient {
   hostname: string;
+  private cookie?: string;
+  private csrfToken?: string;
 
 
-  constructor(hostname = "") {
+  constructor(hostname = "", options: { cookie?: string } = {}) {
     this.hostname = hostname;
+    this.cookie = options.cookie;
   }
 
+  setCsrfToken(token?: string): void {
+    this.csrfToken = token;
+  }
 
   private async _fetch(url: string, options?: RequestInit): Promise<Response> {
     const method = options?.method ?? "GET";
+    const headers = new Headers(options?.headers);
+    if (this.cookie) headers.set("Cookie", this.cookie);
+    if (
+      this.csrfToken &&
+      !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())
+    ) {
+      headers.set("X-CSRF-Token", this.csrfToken);
+    }
     const start = Date.now();
     console.log(`[api] ${method} ${url}`);
     try {
-      const resp = await fetch(url, options);
+      const resp = await fetch(url, {
+        ...options,
+        headers,
+        credentials: this.hostname ? undefined : "same-origin",
+      });
       console.log(`[api] ${method} ${url} → ${resp.status} (${Date.now() - start}ms)`);
       return resp;
     } catch (err) {
@@ -93,6 +119,7 @@ export class ApiClient {
         CallableRestOperation.prototype
       );
       server_rendered.operations[key].hostname = this.hostname;
+      server_rendered.operations[key].bindTransport(this._fetch.bind(this));
     }
     return server_rendered;
   }
@@ -101,7 +128,11 @@ export class ApiClient {
   async getStatus(): Promise<ApiStatus> {
     const resp = await this._fetch(`${this.hostname}/api/status`);
     if (!resp.ok) throw Error(`${this.hostname}/api/status returned error code`);
-    return new ApiStatus({ ... await resp.json(), hostname: this.hostname });
+    return new ApiStatus({
+      ...await resp.json(),
+      hostname: this.hostname,
+      transport: this._fetch.bind(this),
+    });
   }
 
 
@@ -139,7 +170,11 @@ export class ApiClient {
     const resp = await this._fetch(`${this.hostname}/api/next/bin`);
     const json = await resp.json();
     if (!resp.ok) throw Error(`${this.hostname}/api/next/bin returned error status`);
-    return new NextBin({ ...json, hostname: this.hostname });
+    return new NextBin({
+      ...json,
+      hostname: this.hostname,
+      transport: this._fetch.bind(this),
+    });
   }
 
 
@@ -162,7 +197,13 @@ export class ApiClient {
     const resp = await this._fetch(`${this.hostname}/api/bin/${id}`);
     const json = await resp.json();
 
-    if (resp.ok) return new Bin({ ...json, hostname: this.hostname });
+    if (resp.ok) {
+      return new Bin({
+        ...json,
+        hostname: this.hostname,
+        transport: this._fetch.bind(this),
+      });
+    }
     else return { ...json, kind: "problem" };
   }
 
@@ -191,7 +232,13 @@ export class ApiClient {
   async getSku(id: string): Promise<Sku | Problem> {
     const resp = await this._fetch(`${this.hostname}/api/sku/${id}`);
     const json = await resp.json();
-    if (resp.ok) return new Sku({ ...json, hostname: this.hostname });
+    if (resp.ok) {
+      return new Sku({
+        ...json,
+        hostname: this.hostname,
+        transport: this._fetch.bind(this),
+      });
+    }
     else return { ...json, kind: "problem" };
   }
 
@@ -220,7 +267,13 @@ export class ApiClient {
   async getBatch(batch_id: string): Promise<Batch | Problem> {
     const resp = await this._fetch(`${this.hostname}/api/batch/${batch_id}`);
     const json = await resp.json();
-    if (resp.ok) return new Batch({ ...json, hostname: this.hostname });
+    if (resp.ok) {
+      return new Batch({
+        ...json,
+        hostname: this.hostname,
+        transport: this._fetch.bind(this),
+      });
+    }
     else return { ...json, kind: "problem" };
   }
 
@@ -261,6 +314,115 @@ export class ApiClient {
     const json = await resp.json();
     if (resp.ok) return { ...json, kind: "status" };
     return { ...json, kind: "problem" };
+  }
+
+  async getAuthSession(): Promise<AuthSessionResource> {
+    const response = await this._fetch(`${this.hostname}/api/auth/session`);
+    if (!response.ok) throw new Error("Unable to read the authentication session.");
+    return response.json();
+  }
+
+  async getApplicationRoot(): Promise<ApplicationRootResource> {
+    const response = await this._fetch(`${this.hostname}/api/`);
+    if (!response.ok) throw new Error("Unable to read the application root.");
+    return response.json();
+  }
+
+  async startBootstrapRegistration(
+    bootstrapToken: string
+  ): Promise<PasskeyCeremony | AuthProblem> {
+    const response = await this._fetch(
+      `${this.hostname}/api/auth/bootstrap/registration/options`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bootstrap_token: bootstrapToken }),
+      }
+    );
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async startRecoveryRegistration(
+    recoveryCode: string
+  ): Promise<PasskeyCeremony | AuthProblem> {
+    const response = await this._fetch(
+      `${this.hostname}/api/auth/bootstrap/registration/options`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recovery_code: recoveryCode }),
+      }
+    );
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async startAdditionalPasskeyRegistration():
+    Promise<PasskeyCeremony | AuthProblem> {
+    const response = await this._fetch(
+      `${this.hostname}/api/auth/bootstrap/registration/options`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }
+    );
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async finishBootstrapRegistration(
+    ceremony: PasskeyCeremony,
+    credential: PasskeyCredentialJSON
+  ): Promise<AuthVerificationResult | AuthProblem> {
+    const verify = ceremony.operations.find((operation) => operation.rel === "verify");
+    if (!verify) throw new Error("Registration ceremony has no verification operation.");
+    const response = await this._fetch(`${this.hostname}${verify.href}`, {
+      method: verify.method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ceremony_id: ceremony.state.ceremony_id,
+        credential,
+      }),
+    });
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async startPasskeyAuthentication(): Promise<PasskeyCeremony | AuthProblem> {
+    const response = await this._fetch(
+      `${this.hostname}/api/auth/passkeys/authentication/options`,
+      { method: "POST" }
+    );
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async finishPasskeyAuthentication(
+    ceremony: PasskeyCeremony,
+    credential: PasskeyCredentialJSON
+  ): Promise<AuthVerificationResult | AuthProblem> {
+    const verify = ceremony.operations.find((operation) => operation.rel === "verify");
+    if (!verify) throw new Error("Authentication ceremony has no verification operation.");
+    const response = await this._fetch(`${this.hostname}${verify.href}`, {
+      method: verify.method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ceremony_id: ceremony.state.ceremony_id,
+        credential,
+      }),
+    });
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async logout(): Promise<void> {
+    const response = await this._fetch(`${this.hostname}/api/auth/logout`, {
+      method: "POST",
+    });
+    if (!response.ok) throw new Error("Unable to sign out.");
+    this.csrfToken = undefined;
   }
 
   async getInventoryOperations(
@@ -550,7 +712,11 @@ export class ApiClient {
     );
     const json = await resp.json();
     if (resp.ok) {
-      return new ProcessDefinition({ ...json, hostname: this.hostname });
+      return new ProcessDefinition({
+        ...json,
+        hostname: this.hostname,
+        transport: this._fetch.bind(this),
+      });
     }
     return { ...json, kind: "problem" };
   }

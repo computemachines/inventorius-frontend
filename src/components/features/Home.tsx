@@ -16,6 +16,7 @@ import {
 import ItemLabel from "../primitives/ItemLabel";
 import ReceiptTime from "../primitives/ReceiptTime";
 import { Link } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
 
 /**
  * Home page component
@@ -23,6 +24,7 @@ import { Link } from "react-router-dom";
  * Shows general statistics, recent items, and quick links.
  */
 function Home() {
+  const { hasOperation } = useAuth();
   const { data, frontloadMeta } = useFrontload(
     "home-component",
     async ({ api }: FrontloadContext) => {
@@ -72,6 +74,7 @@ function Home() {
           count={stats.counts.bins}
           linkTo="/new/bin"
           linkLabel="+ New"
+          showLink={hasOperation("create-bin")}
           color="blue"
         />
         <StatCard
@@ -79,6 +82,7 @@ function Home() {
           count={stats.counts.skus}
           linkTo="/new/sku"
           linkLabel="+ New"
+          showLink={hasOperation("create-sku")}
           color="green"
         />
         <StatCard
@@ -86,6 +90,7 @@ function Home() {
           count={stats.counts.batches}
           linkTo="/new/batch"
           linkLabel="+ New"
+          showLink={hasOperation("create-batch")}
           color="amber"
         />
       </div>
@@ -96,12 +101,20 @@ function Home() {
           Quick Actions
         </h2>
         <div className="flex flex-wrap gap-2">
-          <QuickActionLink to="/capture" label="Quick Capture" />
-          <QuickActionLink to="/receive" label="Receive Items" />
-          <QuickActionLink to="/release" label="Release Items" />
-          <QuickActionLink to="/move" label="Move Items" />
+          {hasOperation("intake") && (
+            <QuickActionLink to="/capture" label="Quick Capture" />
+          )}
+          {hasOperation("inventory-operation") && (
+            <>
+              <QuickActionLink to="/receive" label="Receive Items" />
+              <QuickActionLink to="/release" label="Release Items" />
+              <QuickActionLink to="/move" label="Move Items" />
+            </>
+          )}
           <QuickActionLink to="/search" label="Search" />
-          <QuickActionLink to="/audit" label="Audit" />
+          {hasOperation("audit-observation") && (
+            <QuickActionLink to="/audit" label="Audit" />
+          )}
         </div>
       </div>
 
@@ -248,12 +261,14 @@ function StatCard({
   count,
   linkTo,
   linkLabel,
+  showLink,
   color,
 }: {
   label: string;
   count: number;
   linkTo: string;
   linkLabel: string;
+  showLink: boolean;
   color: "blue" | "green" | "amber";
 }) {
   const colorClasses = {
@@ -272,12 +287,14 @@ function StatCard({
     <div className={`rounded-lg border p-4 ${colorClasses[color]}`}>
       <div className="flex items-baseline justify-between">
         <span className="text-sm font-medium">{label}</span>
-        <Link
-          to={linkTo}
-          className="text-xs hover:underline opacity-70 hover:opacity-100"
-        >
-          {linkLabel}
-        </Link>
+        {showLink && (
+          <Link
+            to={linkTo}
+            className="text-xs hover:underline opacity-70 hover:opacity-100"
+          >
+            {linkLabel}
+          </Link>
+        )}
       </div>
       <div className={`text-3xl font-bold mt-1 ${countColorClasses[color]}`}>
         {count.toLocaleString()}

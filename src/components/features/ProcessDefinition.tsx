@@ -249,21 +249,26 @@ export default function ProcessDefinition({ editable = false }: { editable?: boo
         </FormSection>
       )}
 
-      {state.is_current && (
+      {state.is_current &&
+        (definition.operations.update || definition.operations.delete) && (
         <div className="mt-8 flex gap-3 border-t border-[#cdd2d6] pt-6">
-          <Link
-            to={`/processes/${id}/edit`}
-            className="rounded-md bg-[#0c3764] px-5 py-3 font-semibold text-white hover:bg-[#082441]"
-          >
-            Edit definition
-          </Link>
-          <button
-            type="button"
-            onClick={() => setShowDelete(true)}
-            className="rounded-md border border-red-300 px-5 py-3 font-medium text-red-700 hover:bg-red-50"
-          >
-            Delete
-          </button>
+          {definition.operations.update && (
+            <Link
+              to={`/processes/${id}/edit`}
+              className="rounded-md bg-[#0c3764] px-5 py-3 font-semibold text-white hover:bg-[#082441]"
+            >
+              Edit definition
+            </Link>
+          )}
+          {definition.operations.delete && (
+            <button
+              type="button"
+              onClick={() => setShowDelete(true)}
+              className="rounded-md border border-red-300 px-5 py-3 font-medium text-red-700 hover:bg-red-50"
+            >
+              Delete
+            </button>
+          )}
         </div>
       )}
     </div>

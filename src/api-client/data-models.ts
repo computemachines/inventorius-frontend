@@ -505,15 +505,21 @@ class RestEndpoint {
     state,
     operations,
     hostname,
+    transport,
   }: {
     state: unknown;
     operations: RestOperation[];
     hostname: string;
+    transport?: OperationTransport;
   }) {
     this.state = state;
     this.operations = {};
     for (const op of operations) {
-      this.operations[op.rel] = new CallableRestOperation({ hostname, ...op });
+      this.operations[op.rel] = new CallableRestOperation({
+        hostname,
+        transport,
+        ...op,
+      });
     }
   }
 }
@@ -524,18 +530,36 @@ export interface RestOperation {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 }
 
+export type OperationTransport = (
+  url: string,
+  options?: RequestInit
+) => Promise<Response>;
+
 export class CallableRestOperation implements RestOperation {
   rel: string;
   href: string;
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   hostname: string;
+  private transport?: OperationTransport;
   constructor(config: {
     rel: string;
     href: string;
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     hostname: string;
+    transport?: OperationTransport;
   }) {
-    Object.assign(this, config);
+    const { transport, ...wireConfig } = config;
+    Object.assign(this, wireConfig);
+    this.bindTransport(transport);
+  }
+
+  bindTransport(transport?: OperationTransport): void {
+    Object.defineProperty(this, "transport", {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: transport,
+    });
   }
 
   perform({
@@ -545,13 +569,14 @@ export class CallableRestOperation implements RestOperation {
     body?: string;
     json?: unknown;
   } = {}): Promise<Response> {
+    const request = this.transport ?? fetch;
     if (body) {
-      return fetch(`${this.hostname}${this.href}`, {
+      return request(`${this.hostname}${this.href}`, {
         method: this.method,
         body,
       });
     } else if (json) {
-      return fetch(`${this.hostname}${this.href}`, {
+      return request(`${this.hostname}${this.href}`, {
         method: this.method,
         headers: {
           "Content-Type": "application/json",
@@ -559,7 +584,7 @@ export class CallableRestOperation implements RestOperation {
         body: JSON.stringify(json),
       });
     } else {
-      return fetch(`${this.hostname}${this.href}`, {
+      return request(`${this.hostname}${this.href}`, {
         method: this.method,
       });
     }
@@ -594,15 +619,17 @@ export class Bin extends RestEndpoint {
   kind: "bin" = "bin";
   state: BinState;
   operations: {
-    delete: CallableRestOperation;
-    update: CallableRestOperation;
+    delete?: CallableRestOperation;
+    update?: CallableRestOperation;
   };
 
   update(patch: { props: Props }): Promise<Status | Problem> {
+    if (!this.operations.update) throw new Error("Update is not permitted.");
     return status_or_problem(this.operations.update.perform({ json: patch }));
   }
 
   delete(): Promise<Status | Problem> {
+    if (!this.operations.delete) throw new Error("Delete is not permitted.");
     return status_or_problem(this.operations.delete.perform());
   }
 }
@@ -634,8 +661,8 @@ export class Sku extends RestEndpoint {
   kind: "sku" = "sku";
   state: SkuState;
   operations: {
-    update: CallableRestOperation;
-    delete: CallableRestOperation;
+    update?: CallableRestOperation;
+    delete?: CallableRestOperation;
     bins: CallableRestOperation;
     batches: CallableRestOperation;
   };
@@ -645,9 +672,11 @@ export class Sku extends RestEndpoint {
     associated_codes?: string[];
     props?: Props;
   }): Promise<Status | Problem> {
+    if (!this.operations.update) throw new Error("Update is not permitted.");
     return status_or_problem(this.operations.update.perform({ json: patch }));
   }
   delete(): Promise<Status | Problem> {
+    if (!this.operations.delete) throw new Error("Delete is not permitted.");
     return status_or_problem(this.operations.delete.perform());
   }
   async bins(): Promise<SkuLocations | Problem> {
@@ -676,8 +705,8 @@ export class Batch extends RestEndpoint {
   kind: "batch" = "batch";
   state: BatchState;
   operations: {
-    update: CallableRestOperation;
-    delete: CallableRestOperation;
+    update?: CallableRestOperation;
+    delete?: CallableRestOperation;
     bins: CallableRestOperation;
   };
   update(patch: {
@@ -688,9 +717,11 @@ export class Batch extends RestEndpoint {
     associated_codes?: string[];
     props?: Props;
   }): Promise<Status | Problem> {
+    if (!this.operations.update) throw new Error("Update is not permitted.");
     return status_or_problem(this.operations.update.perform({ json: patch }));
   }
   delete(): Promise<Status | Problem> {
+    if (!this.operations.delete) throw new Error("Delete is not permitted.");
     return status_or_problem(this.operations.delete.perform());
   }
   async bins(): Promise<BatchLocations | Problem> {
@@ -749,6 +780,7 @@ export class ProcessDefinition extends RestEndpoint {
         title: "Historical process revisions cannot be edited.",
       });
     }
+    if (!this.operations.update) throw new Error("Update is not permitted.");
     return status_or_problem(this.operations.update.perform({ json: patch }));
   }
 
@@ -760,6 +792,7 @@ export class ProcessDefinition extends RestEndpoint {
         title: "Historical process revisions cannot be deleted.",
       });
     }
+    if (!this.operations.delete) throw new Error("Delete is not permitted.");
     return status_or_problem(this.operations.delete.perform());
   }
 

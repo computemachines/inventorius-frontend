@@ -341,19 +341,23 @@ function SkuDetails({
           </>
         ) : (
           <>
-            <Link
-              to={generatePath("/sku/:id/edit", { id })}
-              className="py-3 px-5 text-base font-semibold bg-[#0c3764] text-white rounded-md hover:bg-[#082441] transition-colors text-center"
-            >
-              Edit
-            </Link>
-            <button
-              type="button"
-              onClick={() => setShowModal(true)}
-              className="py-3 px-5 text-base font-medium bg-transparent text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
-            >
-              Delete
-            </button>
+            {data.sku.operations.update && (
+              <Link
+                to={generatePath("/sku/:id/edit", { id })}
+                className="py-3 px-5 text-base font-semibold bg-[#0c3764] text-white rounded-md hover:bg-[#082441] transition-colors text-center"
+              >
+                Edit
+              </Link>
+            )}
+            {data.sku.operations.delete && (
+              <button
+                type="button"
+                onClick={() => setShowModal(true)}
+                className="py-3 px-5 text-base font-medium bg-transparent text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
+              >
+                Delete
+              </button>
+            )}
           </>
         )}
       </div>
