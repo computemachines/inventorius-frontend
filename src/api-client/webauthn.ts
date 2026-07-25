@@ -119,8 +119,14 @@ export function passkeyError(error: unknown): string {
   }
   switch (error.name) {
     case "NotAllowedError":
+      return (
+        "The browser ended the passkey request before Inventorius received a " +
+        "credential. It may have been cancelled, timed out, or failed while " +
+        "connecting to another device. If this is an embedded browser, try a " +
+        "regular browser."
+      );
     case "AbortError":
-      return "The passkey prompt was cancelled or timed out.";
+      return "The passkey request was cancelled.";
     case "InvalidStateError":
       return "That passkey is already registered.";
     case "SecurityError":
@@ -129,4 +135,3 @@ export function passkeyError(error: unknown): string {
       return "The browser could not complete the passkey operation.";
   }
 }
-

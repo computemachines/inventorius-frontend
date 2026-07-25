@@ -25,9 +25,9 @@ export default function BootstrapOwner() {
         <pre className="bg-gray-100 p-4 rounded select-all">
           {recoveryCodes.join("\n")}
         </pre>
-        <Link className="inline-block mt-6" to="/">
+        <a className="inline-block mt-6" href="/">
           Continue to Inventorius
-        </Link>
+        </a>
       </div>
     );
   }
