@@ -18,7 +18,7 @@ import * as Sentry from "@sentry/node";
 
 import App from "../components/App";
 import { ApiClient } from "../api-client/api-client";
-import { version } from "os";
+import { runtimeBuildInfo, sentryRelease } from "../build-info";
 import {
   ServerStatusContext,
   type ServerStatus,
@@ -44,24 +44,28 @@ const dev: boolean = args["--dev"];
 const noclient: boolean = args["--noclient"];
 
 const app = express();
+const buildInfo = runtimeBuildInfo();
+const sentryDsn = process.env.SENTRY_SSR_DSN;
 
-// TODO: move hardcoded dsn to config file
-Sentry.init({
-  dsn: "https://841e6ad3756e472085e3e924a0ded641@o1103275.ingest.sentry.io/6150241",
-  release: process.env.VERSION,
-  environment: process.env.NODE_ENV,
-  integrations: [
-    // enable HTTP calls tracing
-    Sentry.httpIntegration(),
-    // enable Express.js middleware tracing
-    Sentry.expressIntegration(),
-  ],
-
-  // Set tracesSampleRate to 1.0 to capture 100%
-  // of transactions for performance monitoring.
-  // We recommend adjusting this value in production
-  tracesSampleRate: 1.0,
-});
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    release: sentryRelease(buildInfo.revision),
+    environment: buildInfo.environment,
+    sendDefaultPii: false,
+    tracesSampleRate: 0,
+    initialScope: {
+      tags: {
+        component: buildInfo.component,
+        component_version: buildInfo.version,
+        build_revision: buildInfo.revision,
+        product_release: buildInfo.product_release,
+        deployment_environment: buildInfo.environment,
+        build_time: buildInfo.build_time,
+      },
+    },
+  });
+}
 
 // In Sentry v10+, request/tracing handling is automatic via expressIntegration
 
@@ -91,6 +95,10 @@ function htmlTemplate(
     <body>
         <div id="react-root">${app}</div>
         <script nonce="${nonce}">
+            window.__INVENTORIUS_RUNTIME__ = ${JSON.stringify({
+              build: buildInfo,
+              sentry_browser_dsn: process.env.SENTRY_BROWSER_DSN || undefined,
+            }).replace(/</g, "\\u003c")};
             window.__DEV_MODE = ${dev}
               // WARNING: See the following for security issues around embedding JSON in HTML:
               // http://redux.js.org/recipes/ServerRendering.html#security-considerations
@@ -110,8 +118,9 @@ app.use(
 );
 app.get("/assets/*", (_, res) => res.sendStatus(404)); // fallthrough
 
-app.get("/debug-sentry", function mainHandler(req, res) {
-  throw new Error("My first Sentry error!");
+app.get("/build.json", (_, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(buildInfo);
 });
 
 app.get("/*", cors(), async function (req, res) {

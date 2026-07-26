@@ -17,12 +17,17 @@ const allowedHosts =
 isDevelopment && console.log("DEVELOPMENT MODE");
 nohot && console.log("DISABLED ReactRefreshWebpackPlugin");
 
-// const SentryCliPlugin = require('@sentry/webpack-plugin');
 const version = require("./package.json").version;
+const buildRevision = process.env.BUILD_REVISION || "dev";
+const buildTime = process.env.BUILD_TIME || "unknown";
 
 module.exports = {
   mode: isDevelopment ? "development" : "production",
-  devtool: isDevelopment ? "inline-source-map" : "source-map",
+  devtool: isDevelopment
+    ? "inline-source-map"
+    : process.env.SOURCE_MAPS === "true"
+      ? "source-map"
+      : false,
   entry: {
     client: "./src/client/entry.tsx",
   },
@@ -79,7 +84,9 @@ module.exports = {
     isDevelopment && !nohot && new ReactRefreshWebpackPlugin(), //do not include in nonhot client builds. results in cryptic error "internal/crypto/hash.js:69 TypeError ERR_INVALID_ARG_TYPE"
     new ForkTsCheckerWebpackPlugin(),
     new webpack.DefinePlugin({
-      "process.env.VERSION": JSON.stringify(version),
+      "process.env.COMPONENT_VERSION": JSON.stringify(version),
+      "process.env.BUILD_REVISION": JSON.stringify(buildRevision),
+      "process.env.BUILD_TIME": JSON.stringify(buildTime),
       "process.env.NODE_ENV": JSON.stringify(
         process.env.NODE_ENV || "development"
       ),

@@ -1,8 +1,11 @@
 .git
-.env
-.playwright-mcp
-coverage
-dist
-docs
+.github
 node_modules
-*.log
+dist
+.env
+.env.*
+*.local
+*secrets*
+deployment-ci/
+coverage
+.cache

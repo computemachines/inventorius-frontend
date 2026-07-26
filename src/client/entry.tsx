@@ -10,6 +10,7 @@ import App from "../components/App";
 import * as Sentry from "@sentry/react";
 import { BrowserRouter } from "react-router-dom";
 import { ApiContext, ApiClient } from "../api-client/api-client";
+import { sentryRelease } from "../build-info";
 
 declare global {
   /**
@@ -33,12 +34,26 @@ declare global {
  * Set up sentry error reporting.
  */
 function init_sentry() {
+  const runtime = window.__INVENTORIUS_RUNTIME__;
+  const dsn = runtime?.sentry_browser_dsn;
+  if (!runtime || !dsn) return;
+
   Sentry.init({
-    dsn: "https://b694aa8379e140ab9e94b4e906b17768@o1103275.ingest.sentry.io/6148115",
-    integrations: [Sentry.browserTracingIntegration()],
-    release: process.env.VERSION,
-    environment: process.env.NODE_ENV,
-    tracesSampleRate: 1.0,
+    dsn,
+    release: sentryRelease(runtime.build.revision),
+    environment: runtime.build.environment,
+    sendDefaultPii: false,
+    tracesSampleRate: 0,
+    initialScope: {
+      tags: {
+        component: runtime.build.component,
+        component_version: runtime.build.version,
+        build_revision: runtime.build.revision,
+        product_release: runtime.build.product_release,
+        deployment_environment: runtime.build.environment,
+        build_time: runtime.build.build_time,
+      },
+    },
   });
 }
 

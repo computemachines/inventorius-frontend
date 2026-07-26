@@ -3,19 +3,55 @@
 # Main and development publish different stable channels. A development push
 # must never move the production `latest` tag.
 
-name: Build and Push
+name: Build, Validate, and Publish
 
 on:
+  pull_request:
   push:
     branches: [main, development]
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build without public source maps
+        env:
+          BUILD_REVISION: ${{ github.sha }}
+          BUILD_TIME: ${{ github.event.repository.updated_at || github.run_id }}
+        run: |
+          npm run build:client
+          npm run build:server
+          if find dist -name '*.map' -print -quit | grep -q .; then
+            echo "Runtime build must not contain source maps"
+            exit 1
+          fi
+
   build-and-push:
+    needs: validate
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -24,6 +60,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Node for source-map upload
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Define immutable build metadata
+        id: build
+        run: |
+          echo "revision=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "release=inventorius-frontend@${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "created=$(date --utc +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -38,9 +87,32 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=development,enable=${{ github.ref == 'refs/heads/development' }}
-            type=sha,prefix=
+            type=raw,value=sha-${{ steps.build.outputs.revision }}
+
+      - name: Upload private source maps to Sentry
+        if: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_CLIENT_PROJECT != '' && secrets.SENTRY_SERVER_PROJECT != '' }}
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_CLIENT_PROJECT: ${{ secrets.SENTRY_CLIENT_PROJECT }}
+          SENTRY_SERVER_PROJECT: ${{ secrets.SENTRY_SERVER_PROJECT }}
+          SENTRY_RELEASE: ${{ steps.build.outputs.release }}
+          BUILD_REVISION: ${{ steps.build.outputs.revision }}
+          BUILD_TIME: ${{ steps.build.outputs.created }}
+          SOURCE_MAPS: "true"
+        run: |
+          npm ci
+          npm run build:client
+          npm run build:server
+          npx sentry-cli releases -p "$SENTRY_CLIENT_PROJECT" new "$SENTRY_RELEASE" || true
+          npx sentry-cli releases -p "$SENTRY_SERVER_PROJECT" new "$SENTRY_RELEASE" || true
+          npx sentry-cli releases -p "$SENTRY_CLIENT_PROJECT" files "$SENTRY_RELEASE" upload-sourcemaps \
+            --url-prefix '~/assets' --validate dist/assets
+          npx sentry-cli releases -p "$SENTRY_SERVER_PROJECT" files "$SENTRY_RELEASE" upload-sourcemaps \
+            --url-prefix 'app:///' --validate dist/server.bundle.js dist/server.bundle.js.map
+          npx sentry-cli releases -p "$SENTRY_CLIENT_PROJECT" finalize "$SENTRY_RELEASE"
+          npx sentry-cli releases -p "$SENTRY_SERVER_PROJECT" finalize "$SENTRY_RELEASE"
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -49,3 +121,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_REVISION=${{ steps.build.outputs.revision }}
+            BUILD_TIME=${{ steps.build.outputs.created }}
+          provenance: mode=max

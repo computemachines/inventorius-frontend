@@ -4,6 +4,9 @@ dist/
 .cache/
 coverage/
 .env
+.env.*
+!.env.example
+*.local
 .vscode
 *.code-workspace
 stats.json
@@ -12,3 +15,4 @@ package-root
 .playwright-mcp/
 *secrets*
 !*.gpg
+deployment-ci/inventorius-frontend_secrets.sh
