@@ -17,6 +17,7 @@ import ItemLabel from "../primitives/ItemLabel";
 import ReceiptTime from "../primitives/ReceiptTime";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { COMPONENT_VERSION } from "../../build-info";
 
 /**
  * Home page component
@@ -210,7 +211,7 @@ function Home() {
 
       {/* Version info */}
       <div className="mt-8 text-center text-xs text-gray-400">
-        Frontend v{process.env.VERSION}
+        Frontend v{COMPONENT_VERSION}
       </div>
     </div>
   );
