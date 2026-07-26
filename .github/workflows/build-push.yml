@@ -53,6 +53,7 @@ jobs:
     needs: validate
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     permissions:
       contents: read
       packages: write
@@ -109,30 +110,23 @@ jobs:
             echo "configured=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload private source maps to Sentry
-        if: steps.sentry.outputs.configured == 'true'
+      - name: Build private source maps
         env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
-          SENTRY_CLIENT_PROJECT: ${{ vars.SENTRY_CLIENT_PROJECT }}
-          SENTRY_SERVER_PROJECT: ${{ vars.SENTRY_SERVER_PROJECT }}
-          SENTRY_RELEASE: ${{ steps.build.outputs.release }}
           BUILD_REVISION: ${{ steps.build.outputs.revision }}
           BUILD_TIME: ${{ steps.build.outputs.created }}
           SOURCE_MAPS: "true"
-          CLIENT_URL_PREFIX: ~/assets
         run: |
           npm ci
           npm run build:client
           npm run build:server
-          npx sentry-cli releases -p "$SENTRY_CLIENT_PROJECT" new "$SENTRY_RELEASE" || true
-          npx sentry-cli releases -p "$SENTRY_SERVER_PROJECT" new "$SENTRY_RELEASE" || true
-          npx sentry-cli releases -p "$SENTRY_CLIENT_PROJECT" files "$SENTRY_RELEASE" upload-sourcemaps \
-            --url-prefix "$CLIENT_URL_PREFIX" --validate dist/assets
-          npx sentry-cli releases -p "$SENTRY_SERVER_PROJECT" files "$SENTRY_RELEASE" upload-sourcemaps \
-            --url-prefix 'app:///' --validate dist/server.bundle.js dist/server.bundle.js.map
-          npx sentry-cli releases -p "$SENTRY_CLIENT_PROJECT" finalize "$SENTRY_RELEASE"
-          npx sentry-cli releases -p "$SENTRY_SERVER_PROJECT" finalize "$SENTRY_RELEASE"
+
+      - name: Preserve private source maps for environment observation
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentry-source-maps-${{ steps.build.outputs.revision }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -145,3 +139,52 @@ jobs:
             BUILD_REVISION=${{ steps.build.outputs.revision }}
             BUILD_TIME=${{ steps.build.outputs.created }}
           provenance: mode=max
+
+      - name: Wait until development reports this revision
+        if: github.ref == 'refs/heads/development'
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 900))
+          while (( SECONDS < deadline )); do
+            revision="$(
+              curl --fail --silent --show-error --max-time 15 \
+                https://dev.inventory.computemachines.com/build.json |
+                jq -r '.revision // empty' || true
+            )"
+            test "$revision" = "$GITHUB_SHA" && exit 0
+            sleep 15
+          done
+          echo "development did not report $GITHUB_SHA within 15 minutes" >&2
+          exit 1
+
+      - name: Record observed browser release, maps, and development deploy
+        if: github.ref == 'refs/heads/development' && steps.sentry.outputs.configured == 'true'
+        uses: getsentry/action-release@v3
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_CLIENT_PROJECT }}
+        with:
+          release: ${{ steps.build.outputs.release }}
+          environment: development
+          projects: ${{ vars.SENTRY_CLIENT_PROJECT }}
+          sourcemaps: dist/assets
+          url_prefix: ~/assets
+          set_commits: auto
+          ignore_missing: true
+          disable_telemetry: true
+
+      - name: Record observed SSR release and private maps
+        if: github.ref == 'refs/heads/development' && steps.sentry.outputs.configured == 'true'
+        uses: getsentry/action-release@v3
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_SERVER_PROJECT }}
+        with:
+          release: ${{ steps.build.outputs.release }}
+          projects: ${{ vars.SENTRY_SERVER_PROJECT }}
+          sourcemaps: dist/server.bundle.js dist/server.bundle.js.map
+          url_prefix: app:///
+          set_commits: skip
+          disable_telemetry: true
