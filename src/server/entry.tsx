@@ -18,7 +18,8 @@ import * as Sentry from "@sentry/node";
 
 import App from "../components/App";
 import { ApiClient } from "../api-client/api-client";
-import { runtimeBuildInfo, sentryRelease } from "../build-info";
+import { sentryRelease } from "../build-info";
+import { runtimeBuildInfo } from "./runtime-build-info";
 import {
   ServerStatusContext,
   type ServerStatus,
@@ -44,24 +45,22 @@ const dev: boolean = args["--dev"];
 const noclient: boolean = args["--noclient"];
 
 const app = express();
-const buildInfo = runtimeBuildInfo();
 const sentryDsn = process.env.SENTRY_SSR_DSN;
+const initialBuildInfo = runtimeBuildInfo();
 
 if (sentryDsn) {
   Sentry.init({
     dsn: sentryDsn,
-    release: sentryRelease(buildInfo.revision),
-    environment: buildInfo.environment,
+    release: sentryRelease(initialBuildInfo.revision),
+    environment: initialBuildInfo.environment,
     sendDefaultPii: false,
     tracesSampleRate: 0,
     initialScope: {
       tags: {
-        component: buildInfo.component,
-        component_version: buildInfo.version,
-        build_revision: buildInfo.revision,
-        product_release: buildInfo.product_release,
-        deployment_environment: buildInfo.environment,
-        build_time: buildInfo.build_time,
+        component: initialBuildInfo.component,
+        component_version: initialBuildInfo.version,
+        build_revision: initialBuildInfo.revision,
+        build_time: initialBuildInfo.build_time,
       },
     },
   });
@@ -81,6 +80,7 @@ function htmlTemplate(
   app: string,
   frontloadServerData,
   nonce,
+  buildInfo,
   dev = false,
   noclient = false
 ) {
@@ -120,11 +120,12 @@ app.get("/assets/*", (_, res) => res.sendStatus(404)); // fallthrough
 
 app.get("/build.json", (_, res) => {
   res.setHeader("Cache-Control", "no-store");
-  res.json(buildInfo);
+  res.json(runtimeBuildInfo());
 });
 
 app.get("/*", cors(), async function (req, res) {
   const start = Date.now();
+  const buildInfo = runtimeBuildInfo();
   console.log(`[ssr] ${req.method} ${req.url}`);
 
   const frontloadState = createFrontloadState.server({
@@ -168,11 +169,22 @@ app.get("/*", cors(), async function (req, res) {
     });
 
     console.log(`[ssr] ${req.url} → ${statusState.statusCode} (${Date.now() - start}ms)`);
-    const complete_page = htmlTemplate(rendered, data, nonce, dev, noclient);
+    const complete_page = htmlTemplate(
+      rendered,
+      data,
+      nonce,
+      buildInfo,
+      dev,
+      noclient
+    );
     res.status(statusState.statusCode).send(complete_page);
   } catch (err) {
     console.error(`[ssr] ${req.url} → ERROR (${Date.now() - start}ms)`, err);
-    Sentry.captureException(err);
+    Sentry.withScope((scope) => {
+      scope.setTag("product_release", buildInfo.product_release);
+      scope.setTag("deployment_environment", buildInfo.environment);
+      Sentry.captureException(err);
+    });
     res.status(500).send("Server render error");
   }
 });

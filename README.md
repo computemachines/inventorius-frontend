@@ -104,6 +104,7 @@ See [inventorius-deploy](https://github.com/computemachines/inventorius-deploy) 
 | `PORT` | SSR server port (default: `3001`) |
 | `PRODUCT_RELEASE` | Human product-release tag added to Sentry events and `/build.json` at runtime |
 | `DEPLOYMENT_ENVIRONMENT` | Runtime environment name, such as `development`, `staging`, or `production` |
+| `INVENTORIUS_RELEASE_MANIFEST_PATH` | Optional controller-written schema-1 manifest; it overrides `PRODUCT_RELEASE` only when it names the frontend and exactly matches this image revision |
 | `SENTRY_BROWSER_DSN` | Public browser Sentry DSN; omitted disables browser reporting |
 | `SENTRY_SSR_DSN` | Server Sentry DSN; omitted disables SSR reporting |
 
@@ -117,6 +118,11 @@ variables `SENTRY_ORG`, `SENTRY_CLIENT_PROJECT`, and `SENTRY_SERVER_PROJECT`
 only to upload private source maps. It skips that upload when any is absent.
 Runtime DSNs belong in the deployment environment, never in this repository or
 the image.
+
+The manifest is read for every `/build.json` and SSR response. It must have
+`schema: 1`, `component: "frontend"`, the image's full immutable `revision`,
+and a non-empty `product_release`. Missing, stale, or malformed manifests
+safely fall back to `PRODUCT_RELEASE` (then the component version).
 
 ## Design System
 

@@ -9,6 +9,7 @@ declare global {
       DEPLOYMENT_ENVIRONMENT?: string;
       SENTRY_BROWSER_DSN?: string;
       SENTRY_SSR_DSN?: string;
+      INVENTORIUS_RELEASE_MANIFEST_PATH?: string;
     }
   }
 
