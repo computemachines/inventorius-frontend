@@ -1,21 +1,59 @@
 # Build and push Docker image to GHCR
 #
-# Triggers on push to main. Watchtower on the server auto-pulls new images.
+# Main and development publish different stable channels. A development push
+# must never move the production `latest` tag.
 
-name: Build and Push
+name: Build, Validate, and Publish
 
 on:
+  pull_request:
   push:
-    branches: [main]
-  workflow_dispatch:  # Allow manual trigger
+    branches: [main, development]
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
+  validate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build without public source maps
+        env:
+          BUILD_REVISION: ${{ github.sha }}
+          BUILD_TIME: ${{ github.event.repository.updated_at || github.run_id }}
+        run: |
+          npm run build:client
+          npm run build:server
+          if find dist -name '*.map' -print -quit | grep -q .; then
+            echo "Runtime build must not contain source maps"
+            exit 1
+          fi
+
+  build-and-push:
+    needs: validate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
     permissions:
       contents: read
       packages: write
@@ -23,6 +61,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Node for source-map upload
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Define immutable build metadata
+        id: build
+        run: |
+          {
+            echo "revision=${GITHUB_SHA}"
+            echo "release=inventorius-frontend@${GITHUB_SHA}"
+            echo "created=$(date --utc +'%Y-%m-%dT%H:%M:%SZ')"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -37,8 +90,43 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest
-            type=sha,prefix=
+            type=raw,value=development,enable=${{ github.ref == 'refs/heads/development' }}
+            type=raw,value=sha-${{ steps.build.outputs.revision }}
+
+      - name: Detect configured Sentry release credentials
+        id: sentry
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_CLIENT_PROJECT: ${{ vars.SENTRY_CLIENT_PROJECT }}
+          SENTRY_SERVER_PROJECT: ${{ vars.SENTRY_SERVER_PROJECT }}
+        run: |
+          if [ -n "$SENTRY_AUTH_TOKEN" ] &&
+             [ -n "$SENTRY_ORG" ] &&
+             [ -n "$SENTRY_CLIENT_PROJECT" ] &&
+             [ -n "$SENTRY_SERVER_PROJECT" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build private source maps
+        env:
+          BUILD_REVISION: ${{ steps.build.outputs.revision }}
+          BUILD_TIME: ${{ steps.build.outputs.created }}
+          SOURCE_MAPS: "true"
+        run: |
+          npm ci
+          npm run build:client
+          npm run build:server
+
+      - name: Preserve private source maps for environment observation
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentry-source-maps-${{ steps.build.outputs.revision }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -47,3 +135,56 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_REVISION=${{ steps.build.outputs.revision }}
+            BUILD_TIME=${{ steps.build.outputs.created }}
+          provenance: mode=max
+
+      - name: Wait until development reports this revision
+        if: github.ref == 'refs/heads/development'
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 900))
+          while (( SECONDS < deadline )); do
+            revision="$(
+              curl --fail --silent --show-error --max-time 15 \
+                https://dev.inventory.computemachines.com/build.json |
+                jq -r '.revision // empty' || true
+            )"
+            test "$revision" = "$GITHUB_SHA" && exit 0
+            sleep 15
+          done
+          echo "development did not report $GITHUB_SHA within 15 minutes" >&2
+          exit 1
+
+      - name: Record observed browser release, maps, and development deploy
+        if: github.ref == 'refs/heads/development' && steps.sentry.outputs.configured == 'true'
+        uses: getsentry/action-release@v3
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_CLIENT_PROJECT }}
+        with:
+          release: ${{ steps.build.outputs.release }}
+          environment: development
+          projects: ${{ vars.SENTRY_CLIENT_PROJECT }}
+          sourcemaps: dist/assets
+          url_prefix: ~/assets
+          set_commits: auto
+          ignore_missing: true
+          disable_telemetry: true
+
+      - name: Record observed SSR release and private maps
+        if: github.ref == 'refs/heads/development' && steps.sentry.outputs.configured == 'true'
+        uses: getsentry/action-release@v3
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_SERVER_PROJECT }}
+        with:
+          release: ${{ steps.build.outputs.release }}
+          projects: ${{ vars.SENTRY_SERVER_PROJECT }}
+          sourcemaps: dist/server.bundle.js dist/server.bundle.js.map
+          url_prefix: app:///
+          set_commits: skip
+          disable_telemetry: true

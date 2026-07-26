@@ -12,12 +12,14 @@ import {
 import { StaticRouter } from "react-router-dom";
 import * as path from "path";
 import * as cors from "cors";
+import { randomBytes } from "crypto";
 
 import * as Sentry from "@sentry/node";
 
 import App from "../components/App";
 import { ApiClient } from "../api-client/api-client";
-import { version } from "os";
+import { sentryRelease } from "../build-info";
+import { runtimeBuildInfo } from "./runtime-build-info";
 import {
   ServerStatusContext,
   type ServerStatus,
@@ -43,24 +45,34 @@ const dev: boolean = args["--dev"];
 const noclient: boolean = args["--noclient"];
 
 const app = express();
+const sentryDsn = process.env.SENTRY_SSR_DSN;
+const initialBuildInfo = runtimeBuildInfo();
 
-// TODO: move hardcoded dsn to config file
-Sentry.init({
-  dsn: "https://841e6ad3756e472085e3e924a0ded641@o1103275.ingest.sentry.io/6150241",
-  release: process.env.VERSION,
-  environment: process.env.NODE_ENV,
-  integrations: [
-    // enable HTTP calls tracing
-    Sentry.httpIntegration(),
-    // enable Express.js middleware tracing
-    Sentry.expressIntegration(),
-  ],
-
-  // Set tracesSampleRate to 1.0 to capture 100%
-  // of transactions for performance monitoring.
-  // We recommend adjusting this value in production
-  tracesSampleRate: 1.0,
-});
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    release: sentryRelease(initialBuildInfo.revision),
+    environment: initialBuildInfo.environment,
+    sendDefaultPii: false,
+    tracesSampleRate: 0,
+    beforeSend(event) {
+      delete event.request;
+      delete event.user;
+      delete event.contexts;
+      delete event.extra;
+      delete event.breadcrumbs;
+      return event;
+    },
+    initialScope: {
+      tags: {
+        component: initialBuildInfo.component,
+        component_version: initialBuildInfo.version,
+        build_revision: initialBuildInfo.revision,
+        build_time: initialBuildInfo.build_time,
+      },
+    },
+  });
+}
 
 // In Sentry v10+, request/tracing handling is automatic via expressIntegration
 
@@ -75,6 +87,8 @@ Sentry.init({
 function htmlTemplate(
   app: string,
   frontloadServerData,
+  nonce,
+  buildInfo,
   dev = false,
   noclient = false
 ) {
@@ -88,7 +102,11 @@ function htmlTemplate(
     </head>
     <body>
         <div id="react-root">${app}</div>
-        <script>
+        <script nonce="${nonce}">
+            window.__INVENTORIUS_RUNTIME__ = ${JSON.stringify({
+              build: buildInfo,
+              sentry_browser_dsn: process.env.SENTRY_BROWSER_DSN || undefined,
+            }).replace(/</g, "\\u003c")};
             window.__DEV_MODE = ${dev}
               // WARNING: See the following for security issues around embedding JSON in HTML:
               // http://redux.js.org/recipes/ServerRendering.html#security-considerations
@@ -96,7 +114,7 @@ function htmlTemplate(
               frontloadServerData
             ).replace(/</g, "\\u003c")}
         </script>
-        ${!noclient ? '<script src="/assets/client.bundle.js"></script>' : ""}
+        ${!noclient ? `<script nonce="${nonce}" src="/assets/client.bundle.js"></script>` : ""}
     </body>
     </html>`;
 }
@@ -108,18 +126,36 @@ app.use(
 );
 app.get("/assets/*", (_, res) => res.sendStatus(404)); // fallthrough
 
-app.get("/debug-sentry", function mainHandler(req, res) {
-  throw new Error("My first Sentry error!");
+app.get("/build.json", (_, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(runtimeBuildInfo());
 });
 
 app.get("/*", cors(), async function (req, res) {
   const start = Date.now();
+  const buildInfo = runtimeBuildInfo();
   console.log(`[ssr] ${req.method} ${req.url}`);
 
   const frontloadState = createFrontloadState.server({
-    context: { api: new ApiClient(API_HOSTNAME) },
+    context: {
+      api: new ApiClient(API_HOSTNAME, { cookie: req.headers.cookie }),
+    },
     logging: dev,
   });
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Vary", "Cookie");
+  const nonce = randomBytes(18).toString("base64");
+  res.setHeader(
+    "Content-Security-Policy",
+    `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://*.ingest.sentry.io; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`
+  );
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "same-origin");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader(
+    "Permissions-Policy",
+    "publickey-credentials-create=(self), publickey-credentials-get=(self)"
+  );
 
   let statusState: ServerStatus = {
     statusCode: 200,
@@ -141,11 +177,22 @@ app.get("/*", cors(), async function (req, res) {
     });
 
     console.log(`[ssr] ${req.url} → ${statusState.statusCode} (${Date.now() - start}ms)`);
-    const complete_page = htmlTemplate(rendered, data, dev, noclient);
+    const complete_page = htmlTemplate(
+      rendered,
+      data,
+      nonce,
+      buildInfo,
+      dev,
+      noclient
+    );
     res.status(statusState.statusCode).send(complete_page);
   } catch (err) {
     console.error(`[ssr] ${req.url} → ERROR (${Date.now() - start}ms)`, err);
-    Sentry.captureException(err);
+    Sentry.withScope((scope) => {
+      scope.setTag("product_release", buildInfo.product_release);
+      scope.setTag("deployment_environment", buildInfo.environment);
+      Sentry.captureException(err);
+    });
     res.status(500).send("Server render error");
   }
 });

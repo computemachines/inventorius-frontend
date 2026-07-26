@@ -3,6 +3,7 @@ import {} from "react";
 
 import "hamburgers/dist/hamburgers.css";
 import "../styles/Topbar.css"; // must load after hamburgers.css
+import AuthStatus from "./auth/AuthStatus";
 
 function Topbar({
   isActive,
@@ -17,6 +18,7 @@ function Topbar({
         <div className="logo" />
         <h2>Inventorius</h2>
       </div>
+      <AuthStatus />
       <button
         className={`hamburger hamburger--squeeze ${
           isActive ? "is-active" : ""

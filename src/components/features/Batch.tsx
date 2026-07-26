@@ -34,10 +34,16 @@ import PropertiesTable, {
 import WarnModal from "../primitives/WarnModal";
 import FormSection from "../primitives/FormSection";
 import { labelClasses, inputClasses } from "../composites/SchemaFields";
+import { useAuth } from "../auth/AuthContext";
 
-function Batch({ editable = false }: { editable?: boolean }) {
+function BatchDetails({
+  requestedId: batch_id,
+  editable = false,
+}: {
+  requestedId: string;
+  editable?: boolean;
+}) {
   const navigate = useNavigate();
-  const { id: batch_id } = useParams<{ id: string }>();
 
   const [showModal, setShowModal] = useState(false);
   const [saveState, setSaveState] = useState<"live" | "unsaved" | "saving">(
@@ -50,6 +56,7 @@ function Batch({ editable = false }: { editable?: boolean }) {
 
   const api = useContext(ApiContext);
   const { setToastContent } = useContext(ToastContext);
+  const { hasOperation } = useAuth();
 
   const { data, frontloadMeta, setData } = useFrontload(
     "batch-component",
@@ -256,9 +263,9 @@ function Batch({ editable = false }: { editable?: boolean }) {
       <label className={labelClasses}>Batch Label</label>
       <div className="flex items-center gap-2 mb-6">
         <span className="text-xl font-mono">
-          <ItemLabel link={false} label={batch_id} />
+          <ItemLabel link={false} label={data.batch.state.id} />
         </span>
-        <PrintButton value={batch_id} />
+        <PrintButton value={data.batch.state.id} />
       </div>
 
       {/* Name */}
@@ -385,35 +392,51 @@ function Batch({ editable = false }: { editable?: boolean }) {
           </>
         ) : (
           <>
-            <Link
-              to={generatePath("/batch/:id/edit", { id: batch_id })}
-              className="py-3 px-5 text-base font-semibold bg-[#0c3764] text-white rounded-md hover:bg-[#082441] transition-colors text-center"
-            >
-              Edit
-            </Link>
-            <Link
-              to={stringifyUrl({ url: "/receive", query: { item: batch_id } })}
-              className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
-            >
-              Receive
-            </Link>
-            <Link
-              to={stringifyUrl({ url: "/release", query: { item: batch_id } })}
-              className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
-            >
-              Release
-            </Link>
-            <button
-              type="button"
-              onClick={() => setShowModal(true)}
-              className="py-3 px-5 text-base font-medium bg-transparent text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
-            >
-              Delete
-            </button>
+            {data.batch.operations.update && (
+              <Link
+                to={generatePath("/batch/:id/edit", { id: batch_id })}
+                className="py-3 px-5 text-base font-semibold bg-[#0c3764] text-white rounded-md hover:bg-[#082441] transition-colors text-center"
+              >
+                Edit
+              </Link>
+            )}
+            {hasOperation("inventory-operation") && (
+              <>
+                <Link
+                  to={stringifyUrl({ url: "/receive", query: { batch: batch_id } })}
+                  className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
+                >
+                  Receive
+                </Link>
+                <Link
+                  to={stringifyUrl({ url: "/release", query: { batch: batch_id } })}
+                  className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
+                >
+                  Release
+                </Link>
+              </>
+            )}
+            {data.batch.operations.delete && (
+              <button
+                type="button"
+                onClick={() => setShowModal(true)}
+                className="py-3 px-5 text-base font-medium bg-transparent text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
+              >
+                Delete
+              </button>
+            )}
           </>
         )}
       </div>
     </div>
   );
+}
+
+function Batch({ editable = false }: { editable?: boolean }) {
+  const { id = "" } = useParams<{ id: string }>();
+
+  // Route input may be shorthand.  Re-mount so react-frontload never leaves a
+  // prior resource visible while this lookup resolves.
+  return <BatchDetails key={id} requestedId={id} editable={editable} />;
 }
 export default Batch;

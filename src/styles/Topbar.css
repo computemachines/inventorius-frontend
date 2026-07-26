@@ -55,6 +55,20 @@
   margin-left: 0;
 }
 
+.auth-status {
+  color: #ecebe4ff;
+  display: inline-flex;
+  gap: 0.75rem;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.auth-status button {
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.5rem;
+}
+
 /*
  * Override the colors in hamburgers.css package
  */

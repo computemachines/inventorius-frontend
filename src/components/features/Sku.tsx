@@ -20,7 +20,6 @@ import PrintButton from "../composites/PrintButton";
 import ItemLocations from "../primitives/ItemLocations";
 import { useContext, useEffect, useState } from "react";
 import { ToastContext } from "../primitives/Toast";
-import { stringifyUrl } from "query-string";
 import PropertiesTable, {
   api_props_from_properties,
   Property,
@@ -29,8 +28,13 @@ import PropertiesTable, {
 import FormSection from "../primitives/FormSection";
 import { labelClasses, inputClasses } from "../composites/SchemaFields";
 
-function Sku({ editable = false }: { editable?: boolean }) {
-  const { id } = useParams<{ id: string }>();
+function SkuDetails({
+  requestedId: id,
+  editable = false,
+}: {
+  requestedId: string;
+  editable?: boolean;
+}) {
   const { data, frontloadMeta, setData } = useFrontload(
     "sku-component",
     async ({ api }: FrontloadContext) => {
@@ -166,12 +170,8 @@ function Sku({ editable = false }: { editable?: boolean }) {
               const resp = await api.hydrate(data.sku).delete();
               if (resp.kind == "status") {
                 setAlertContent({ content: <p>Deleted</p>, mode: "success" });
-                const updatedSku = await api.getSku(id);
-                const updatedSkuBins =
-                  updatedSku.kind == "sku" ? await updatedSku.bins() : updatedSku;
-                const updatedSkuBatches =
-                  updatedSku.kind == "sku" ? await updatedSku.batches() : updatedSku;
-                setData(() => ({ sku: updatedSku, skuBins: updatedSkuBins, skuBatches: updatedSkuBatches }));
+                setShowModal(false);
+                navigate("/search");
               } else {
                 setAlertContent({
                   content: <p>{resp.title}</p>,
@@ -195,9 +195,9 @@ function Sku({ editable = false }: { editable?: boolean }) {
       <label className={labelClasses}>SKU Label</label>
       <div className="flex items-center gap-2 mb-6 justify-between">
         <span className="text-xl font-mono">
-          <ItemLabel link={false} label={id} />
+          <ItemLabel link={false} label={data.sku.state.id} />
         </span>
-        <PrintButton value={id} />
+        <PrintButton value={data.sku.state.id} />
       </div>
 
       {/* Name */}
@@ -341,36 +341,36 @@ function Sku({ editable = false }: { editable?: boolean }) {
           </>
         ) : (
           <>
-            <Link
-              to={generatePath("/sku/:id/edit", { id })}
-              className="py-3 px-5 text-base font-semibold bg-[#0c3764] text-white rounded-md hover:bg-[#082441] transition-colors text-center"
-            >
-              Edit
-            </Link>
-            <Link
-              to={stringifyUrl({ url: "/receive", query: { item: id } })}
-              className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
-            >
-              Receive
-            </Link>
-            <Link
-              to={stringifyUrl({ url: "/release", query: { item: id } })}
-              className="py-3 px-5 text-base font-medium bg-transparent text-[#04151f] border border-[#cdd2d6] rounded-md hover:bg-[#cdd2d6] transition-colors text-center"
-            >
-              Release
-            </Link>
-            <button
-              type="button"
-              onClick={() => setShowModal(true)}
-              className="py-3 px-5 text-base font-medium bg-transparent text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
-            >
-              Delete
-            </button>
+            {data.sku.operations.update && (
+              <Link
+                to={generatePath("/sku/:id/edit", { id })}
+                className="py-3 px-5 text-base font-semibold bg-[#0c3764] text-white rounded-md hover:bg-[#082441] transition-colors text-center"
+              >
+                Edit
+              </Link>
+            )}
+            {data.sku.operations.delete && (
+              <button
+                type="button"
+                onClick={() => setShowModal(true)}
+                className="py-3 px-5 text-base font-medium bg-transparent text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
+              >
+                Delete
+              </button>
+            )}
           </>
         )}
       </div>
     </div>
   );
+}
+
+function Sku({ editable = false }: { editable?: boolean }) {
+  const { id = "" } = useParams<{ id: string }>();
+
+  // Route input may be shorthand.  Re-mount so react-frontload never leaves a
+  // prior resource visible while this lookup resolves.
+  return <SkuDetails key={id} requestedId={id} editable={editable} />;
 }
 
 export default Sku;

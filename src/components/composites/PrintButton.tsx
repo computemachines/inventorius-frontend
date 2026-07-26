@@ -1,210 +1,537 @@
-// src/components/composites/PrintButton.tsx
-// Fully human reviewed: NO
-// Progress: NONE
-//
-// Conversation:
-// > (no discussion yet)
-
-
 import * as React from "react";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import "../../styles/PrintButton.css";
 
-type ButtonState = "idle" | "queued" | "printing" | "error" | "disconnected";
+export type PrintState =
+  | "idle"
+  | "submitting"
+  | "queued"
+  | "printing"
+  | "completed"
+  | "failed"
+  | "disconnected"
+  | "unknown";
+
+interface PrintStatus {
+  state: PrintState;
+  message: string | null;
+}
+
+interface PrintButtonProps {
+  value: string;
+  /** Submit once when this persisted identity first appears. */
+  autoPrint?: boolean;
+  onStateChange?: (state: PrintState) => void;
+}
+
+interface Printer {
+  guid: string;
+  status: string;
+}
+
+type JsonRequestResult =
+  | {
+      kind: "response";
+      ok: boolean;
+      status: number;
+      body: unknown;
+      jsonReadable: boolean;
+    }
+  | { kind: "timeout" }
+  | { kind: "network-error" }
+  | { kind: "cancelled" };
 
 const POLL_INTERVAL_MS = 500;
-const TIMEOUT_MS = 30000;
-const ERROR_DISPLAY_MS = 3000;
+const PRINT_CONFIRMATION_TIMEOUT_MS = 30000;
+const PRINTER_LIST_TIMEOUT_MS = 5000;
+const JOB_SUBMISSION_TIMEOUT_MS = 10000;
+const JOB_STATUS_TIMEOUT_MS = 5000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function errorMessage(body: unknown, fallback: string): string {
+  return isRecord(body) && typeof body.error === "string"
+    ? body.error
+    : fallback;
+}
 
 /**
- * Print Label Button Component
- *
- * Submits a print job to the print service API.
- * Automatically selects the first online printer.
- * Tracks job status: idle -> queued -> printing -> idle
- * Shows error/disconnected states when service is unavailable.
- *
- * @category Components
- * @param props
- * @param {string} props.value - The code to be printed as a QR label.
- * @returns {ReactNode}
+ * These are the only failures the print-service contract documents before it
+ * attempts to publish a job. Everything else could be an application, proxy,
+ * or gateway response produced after the physical consequence began.
  */
-function PrintButton({ value }: { value: string }) {
-  const [buttonState, setButtonState] = useState<ButtonState>("idle");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const pollIntervalRef = useRef<number | null>(null);
-  const timeoutRef = useRef<number | null>(null);
-  const errorTimeoutRef = useRef<number | null>(null);
-  const jobIdRef = useRef<string | null>(null);
+function isDocumentedPreSubmissionRejection(
+  status: number,
+  body: unknown,
+): boolean {
+  if (!isRecord(body) || typeof body.error !== "string") return false;
+  if (status === 404) return body.error === "Printer not found";
+  if (status === 503) {
+    return body.error_code === "service_disconnected";
+  }
+  if (status !== 400) return false;
 
-  const cleanup = useCallback(() => {
-    if (pollIntervalRef.current !== null) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
+  return [
+    "Request body required",
+    "printer_guid required",
+    "code required",
+  ].includes(body.error);
+}
+
+/**
+ * Submit and monitor one label print job.
+ *
+ * A failure is called safe only while no job-submission request has happened,
+ * or when the service returns one of its documented pre-submission 4xx
+ * rejections. Once submission may have occurred, uncertainty remains visible
+ * until the operator deliberately accepts the risk of a duplicate label.
+ */
+function PrintButton({
+  value,
+  autoPrint = false,
+  onStateChange,
+}: PrintButtonProps) {
+  const [status, setStatus] = useState<PrintStatus>({
+    state: "idle",
+    message: null,
+  });
+  const mountedRef = useRef(true);
+  const generationRef = useRef(0);
+  const busyRef = useRef(false);
+  const activeRequestRef = useRef<AbortController | null>(null);
+  const pollTimerRef = useRef<number | null>(null);
+  const autoPrintTimerRef = useRef<number | null>(null);
+  const autoPrintedValueRef = useRef<string | null>(null);
+
+  const clearPollTimer = useCallback(() => {
+    if (pollTimerRef.current !== null) {
+      window.clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
     }
-    if (timeoutRef.current !== null) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    jobIdRef.current = null;
   }, []);
 
-  const showError = useCallback((message: string, isDisconnected = false) => {
-    cleanup();
-    setErrorMessage(message);
-    setButtonState(isDisconnected ? "disconnected" : "error");
+  const isCurrent = useCallback(
+    (generation: number) =>
+      mountedRef.current && generationRef.current === generation,
+    [],
+  );
 
-    // Clear any existing error timeout
-    if (errorTimeoutRef.current !== null) {
-      clearTimeout(errorTimeoutRef.current);
-    }
+  const requestJson = useCallback(
+    async (
+      generation: number,
+      input: RequestInfo | URL,
+      init: RequestInit | undefined,
+      timeoutMs: number,
+    ): Promise<JsonRequestResult> => {
+      if (!isCurrent(generation)) return { kind: "cancelled" };
 
-    // Auto-reset after delay
-    errorTimeoutRef.current = window.setTimeout(() => {
-      setButtonState("idle");
-      setErrorMessage(null);
-      errorTimeoutRef.current = null;
-    }, ERROR_DISPLAY_MS);
-  }, [cleanup]);
+      const controller = new AbortController();
+      activeRequestRef.current?.abort();
+      activeRequestRef.current = controller;
+      let timedOut = false;
+      const timeout = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeoutMs);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cleanup();
-      if (errorTimeoutRef.current !== null) {
-        clearTimeout(errorTimeoutRef.current);
-      }
-    };
-  }, [cleanup]);
+      try {
+        const response = await fetch(input, {
+          ...init,
+          signal: controller.signal,
+        });
+        if (!isCurrent(generation)) return { kind: "cancelled" };
 
-  const pollJobStatus = useCallback(async () => {
-    if (!jobIdRef.current) return;
-
-    try {
-      const resp = await fetch(`/api/print/jobs/${jobIdRef.current}`);
-      if (!resp.ok) {
-        // Job not found or error - reset to idle
-        cleanup();
-        setButtonState("idle");
-        return;
-      }
-
-      const data = await resp.json();
-      const status = data.status;
-
-      if (status === "printing") {
-        setButtonState("printing");
-      } else if (status === "completed") {
-        cleanup();
-        setButtonState("idle");
-      } else if (status === "failed") {
-        showError(data.error || "Print failed");
-      }
-      // If still "pending", keep polling with current state
-    } catch {
-      // Network error - show error state
-      showError("Network error");
-    }
-  }, [cleanup, showError]);
-
-  const handlePrint = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (buttonState !== "idle" || !value) return;
-
-    setButtonState("queued");
-    setErrorMessage(null);
-
-    try {
-      // Get available printers
-      const printersResp = await fetch("/api/print/printers");
-      if (!printersResp.ok) {
-        showError("Failed to fetch printers");
-        return;
-      }
-      const printersData = await printersResp.json();
-
-      // Check if print service is connected to MQTT broker
-      if (printersData.service_connected === false) {
-        showError("Print service disconnected", true);
-        return;
-      }
-
-      // Find online printer, preferring Zebra label printer
-      const onlinePrinters = printersData.printers?.filter(
-        (p: { status: string }) => p.status === "online"
-      ) || [];
-      const onlinePrinter = onlinePrinters.find(
-        (p: { guid: string }) => p.guid.includes("zebra")
-      ) || onlinePrinters[0];
-
-      if (!onlinePrinter) {
-        // Check if there are any printers at all
-        if (!printersData.printers || printersData.printers.length === 0) {
-          showError("No printers configured");
-        } else {
-          showError("No printers online", true);
+        try {
+          const body: unknown = await response.json();
+          if (!isCurrent(generation)) return { kind: "cancelled" };
+          return {
+            kind: "response",
+            ok: response.ok,
+            status: response.status,
+            body,
+            jsonReadable: true,
+          };
+        } catch {
+          if (timedOut) return { kind: "timeout" };
+          if (controller.signal.aborted || !isCurrent(generation)) {
+            return { kind: "cancelled" };
+          }
+          return {
+            kind: "response",
+            ok: response.ok,
+            status: response.status,
+            body: null,
+            jsonReadable: false,
+          };
         }
-        return;
+      } catch {
+        if (timedOut) return { kind: "timeout" };
+        if (controller.signal.aborted || !isCurrent(generation)) {
+          return { kind: "cancelled" };
+        }
+        return { kind: "network-error" };
+      } finally {
+        window.clearTimeout(timeout);
+        if (activeRequestRef.current === controller) {
+          activeRequestRef.current = null;
+        }
       }
+    },
+    [isCurrent],
+  );
 
-      // Submit print job
-      const jobResp = await fetch("/api/print/jobs", {
+  const finish = useCallback(
+    (
+      generation: number,
+      state: Extract<
+        PrintState,
+        "completed" | "failed" | "disconnected" | "unknown"
+      >,
+      message: string,
+    ) => {
+      if (!isCurrent(generation)) return;
+      clearPollTimer();
+      busyRef.current = false;
+      setStatus({ state, message });
+    },
+    [clearPollTimer, isCurrent],
+  );
+
+  const startPrint = useCallback(async () => {
+    if (busyRef.current || !value) return;
+
+    const generation = ++generationRef.current;
+    activeRequestRef.current?.abort();
+    activeRequestRef.current = null;
+    busyRef.current = true;
+    clearPollTimer();
+    setStatus({ state: "submitting", message: "Checking the printer…" });
+
+    const printersResult = await requestJson(
+      generation,
+      "/api/print/printers",
+      undefined,
+      PRINTER_LIST_TIMEOUT_MS,
+    );
+    if (printersResult.kind === "cancelled") return;
+    if (printersResult.kind === "timeout") {
+      finish(
+        generation,
+        "failed",
+        "Checking the printer timed out. No job was submitted.",
+      );
+      return;
+    }
+    if (printersResult.kind === "network-error") {
+      finish(
+        generation,
+        "failed",
+        "The print service could not be reached. No job was submitted.",
+      );
+      return;
+    }
+    if (!printersResult.ok) {
+      finish(
+        generation,
+        "failed",
+        "The printer list could not be loaded. No job was submitted.",
+      );
+      return;
+    }
+    if (!printersResult.jsonReadable || !isRecord(printersResult.body)) {
+      finish(
+        generation,
+        "failed",
+        "The printer list was unreadable. No job was submitted.",
+      );
+      return;
+    }
+
+    const serviceConnected = printersResult.body.service_connected;
+    const printers = printersResult.body.printers;
+    if (serviceConnected === false) {
+      finish(
+        generation,
+        "disconnected",
+        "The print service is disconnected. No job was submitted.",
+      );
+      return;
+    }
+    if (!Array.isArray(printers)) {
+      finish(
+        generation,
+        "failed",
+        "The printer list was unreadable. No job was submitted.",
+      );
+      return;
+    }
+
+    const onlinePrinters = printers.filter(
+      (printer): printer is Printer =>
+        isRecord(printer) &&
+        typeof printer.guid === "string" &&
+        printer.status === "online",
+    );
+    const printer =
+      onlinePrinters.find(({ guid }) => guid.includes("zebra")) ||
+      onlinePrinters[0];
+
+    if (!printer) {
+      finish(
+        generation,
+        "disconnected",
+        printers.length
+          ? "No printer is online. No job was submitted."
+          : "No printer is configured. No job was submitted.",
+      );
+      return;
+    }
+
+    const jobResult = await requestJson(
+      generation,
+      "/api/print/jobs",
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          printer_guid: onlinePrinter.guid,
+          printer_guid: printer.guid,
           code: value,
         }),
-      });
+      },
+      JOB_SUBMISSION_TIMEOUT_MS,
+    );
+    if (jobResult.kind === "cancelled") return;
+    if (jobResult.kind === "timeout") {
+      finish(generation, "unknown", "Submitting the print job timed out.");
+      return;
+    }
+    if (jobResult.kind === "network-error") {
+      finish(
+        generation,
+        "unknown",
+        "The connection was lost while submitting the print job.",
+      );
+      return;
+    }
+    if (!jobResult.ok) {
+      const message = errorMessage(
+        jobResult.body,
+        `The print service returned ${jobResult.status} while submitting the job.`,
+      );
+      if (
+        jobResult.jsonReadable &&
+        isDocumentedPreSubmissionRejection(jobResult.status, jobResult.body)
+      ) {
+        finish(
+          generation,
+          jobResult.status === 503 ? "disconnected" : "failed",
+          `${message} No job was submitted.`,
+        );
+      } else {
+        finish(generation, "unknown", message);
+      }
+      return;
+    }
+    if (!jobResult.jsonReadable || !isRecord(jobResult.body)) {
+      finish(
+        generation,
+        "unknown",
+        "The print service returned an unreadable submission response.",
+      );
+      return;
+    }
 
-      if (!jobResp.ok) {
-        const errorData = await jobResp.json().catch(() => ({}));
+    const jobId = jobResult.body.job_id;
+    if (typeof jobId !== "string" || !jobId) {
+      finish(
+        generation,
+        "unknown",
+        "The print service accepted the request without returning a job ID.",
+      );
+      return;
+    }
 
-        // Handle specific error codes
-        if (errorData.error_code === "service_disconnected") {
-          showError("Print service disconnected", true);
-        } else {
-          showError(errorData.error || "Failed to submit job");
-        }
+    const confirmationDeadline = Date.now() + PRINT_CONFIRMATION_TIMEOUT_MS;
+    setStatus({ state: "queued", message: "The label is queued." });
+
+    const poll = async (): Promise<void> => {
+      if (!isCurrent(generation)) return;
+
+      const remainingMs = confirmationDeadline - Date.now();
+      if (remainingMs <= 0) {
+        finish(
+          generation,
+          "unknown",
+          "The printer did not confirm the job before the timeout.",
+        );
         return;
       }
 
-      const jobData = await jobResp.json();
-      jobIdRef.current = jobData.job_id;
+      const pollResult = await requestJson(
+        generation,
+        `/api/print/jobs/${encodeURIComponent(jobId)}`,
+        undefined,
+        Math.min(JOB_STATUS_TIMEOUT_MS, remainingMs),
+      );
+      if (pollResult.kind === "cancelled") return;
+      if (pollResult.kind === "timeout") {
+        finish(
+          generation,
+          "unknown",
+          "Checking the submitted print job timed out.",
+        );
+        return;
+      }
+      if (pollResult.kind === "network-error") {
+        finish(
+          generation,
+          "unknown",
+          "The submitted print job could not be checked.",
+        );
+        return;
+      }
+      if (!pollResult.ok) {
+        finish(
+          generation,
+          "unknown",
+          pollResult.status === 404
+            ? "The print service no longer knows this submitted job."
+            : "The submitted print job could not be checked.",
+        );
+        return;
+      }
+      if (!pollResult.jsonReadable || !isRecord(pollResult.body)) {
+        finish(
+          generation,
+          "unknown",
+          "The print service returned an unreadable job status.",
+        );
+        return;
+      }
 
-      // Start polling for status updates
-      pollIntervalRef.current = window.setInterval(pollJobStatus, POLL_INTERVAL_MS);
+      const jobStatus = pollResult.body.status;
+      if (jobStatus === "completed") {
+        finish(
+          generation,
+          "completed",
+          "The printer reported that the label completed.",
+        );
+        return;
+      }
+      if (jobStatus === "failed") {
+        finish(
+          generation,
+          "failed",
+          errorMessage(pollResult.body, "The printer rejected the label."),
+        );
+        return;
+      }
+      if (jobStatus === "printing") {
+        setStatus({ state: "printing", message: "The label is printing." });
+      } else if (jobStatus === "pending") {
+        setStatus({ state: "queued", message: "The label is queued." });
+      } else {
+        finish(
+          generation,
+          "unknown",
+          "The print service returned an unknown job state.",
+        );
+        return;
+      }
 
-      // Set timeout to prevent stuck states
-      timeoutRef.current = window.setTimeout(() => {
-        showError("Print timeout");
-      }, TIMEOUT_MS);
-    } catch {
-      showError("Network error");
+      if (!isCurrent(generation)) return;
+      pollTimerRef.current = window.setTimeout(
+        () => void poll(),
+        POLL_INTERVAL_MS,
+      );
+    };
+
+    pollTimerRef.current = window.setTimeout(
+      () => void poll(),
+      POLL_INTERVAL_MS,
+    );
+  }, [clearPollTimer, finish, isCurrent, requestJson, value]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
+      busyRef.current = false;
+      clearPollTimer();
+      activeRequestRef.current?.abort();
+      activeRequestRef.current = null;
+    };
+  }, [clearPollTimer]);
+
+  useEffect(() => {
+    onStateChange?.(status.state);
+  }, [onStateChange, status.state]);
+
+  useEffect(() => {
+    if (!autoPrint || !value || autoPrintedValueRef.current === value) {
+      return;
     }
+
+    // Deferring one turn lets React StrictMode discard its trial effect before
+    // any network request begins. The surviving effect submits exactly once.
+    autoPrintTimerRef.current = window.setTimeout(() => {
+      autoPrintTimerRef.current = null;
+      if (autoPrintedValueRef.current === value) return;
+      autoPrintedValueRef.current = value;
+      void startPrint();
+    }, 0);
+
+    return () => {
+      if (autoPrintTimerRef.current !== null) {
+        window.clearTimeout(autoPrintTimerRef.current);
+        autoPrintTimerRef.current = null;
+      }
+    };
+  }, [autoPrint, startPrint, value]);
+
+  const canPrint =
+    !!value &&
+    ["idle", "completed", "failed", "disconnected", "unknown"].includes(
+      status.state,
+    );
+
+  const buttonText: Record<PrintState, string> = {
+    idle: "Print",
+    submitting: "Preparing…",
+    queued: "Queued…",
+    printing: "Printing…",
+    completed: "Print again",
+    failed: "Retry print",
+    disconnected: "Retry print",
+    unknown: "Reprint anyway",
   };
 
-  const buttonText = {
-    idle: "Print",
-    queued: "Queue",
-    printing: "Printing",
-    error: errorMessage || "Error",
-    disconnected: errorMessage || "Offline",
-  }[buttonState];
-
-  const isClickable = buttonState === "idle" && !!value;
+  const visibleMessage =
+    status.state === "unknown"
+      ? `${status.message} The label may already have printed; printing again may make a duplicate.`
+      : status.message;
 
   return (
-    <button
-      className="form-print-button"
-      onClick={handlePrint}
-      disabled={!isClickable}
-      data-state={buttonState}
-      title={errorMessage || undefined}
-    >
-      {buttonText}
-    </button>
+    <div className="print-control" data-state={status.state}>
+      <button
+        type="button"
+        className="form-print-button"
+        onClick={() => void startPrint()}
+        disabled={!canPrint}
+        data-state={status.state}
+      >
+        {buttonText[status.state]}
+      </button>
+      {visibleMessage ? (
+        <span className="print-status-message" role="status">
+          {visibleMessage}
+        </span>
+      ) : null}
+    </div>
   );
 }
 

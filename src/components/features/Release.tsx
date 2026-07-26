@@ -1,122 +1,205 @@
-// src/components/features/Release.tsx
-// Fully human reviewed: NO
-// Progress: NONE
-//
-// Conversation:
-// > (no discussion yet)
-
-
 import * as React from "react";
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { parse } from "query-string";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiContext } from "../../api-client/api-client";
-import { ToastContext } from "../primitives/Toast";
-
-import "../../styles/form.css";
-import { json } from "express";
+import { normalizeInventoriusId } from "../../identifiers";
+import { Code } from "../composites/CodesInput";
+import InventoryBatchSelector from "../composites/InventoryBatchSelector";
 import ItemLabel from "../primitives/ItemLabel";
-import { parse, stringifyUrl } from "query-string";
-import { generatePath, useNavigate, useLocation } from "react-router-dom";
+import { ToastContext } from "../primitives/Toast";
+import {
+  inputClasses,
+  isBatchId,
+  isBinId,
+  labelClasses,
+  submitClasses,
+  useCommandIdempotency,
+} from "./inventory-operation-form";
 
-function Release() {
+export default function Release() {
   const location = useLocation();
   const navigate = useNavigate();
   const api = useContext(ApiContext);
-  const { setToastContent: setAlertContent } = useContext(ToastContext);
+  const { setToastContent } = useContext(ToastContext);
+  const idempotency = useCommandIdempotency();
 
-  const [fromIdValue, setFromIdValue] = useState("");
-  const [itemIdValue, setItemIdValue] = useState("");
-  const [quantityValue, setQuantityValue] = useState("1");
+  const [binId, setBinId] = useState("");
+  const [itemEvidence, setItemEvidence] = useState<Code[]>([
+    { value: "", kind: "associated" },
+  ]);
+  const [selectedBatchId, setSelectedBatchId] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [validationError, setValidationError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const binInput = useRef<HTMLInputElement>(null);
+  const itemEvidenceInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const queryParams = parse(location.search);
+    const query = parse(location.search);
+    const initialBin =
+      typeof query.from === "string" ? normalizeInventoriusId(query.from) : "";
+    const initialEvidence = typeof query.batch === "string" ? query.batch : "";
+    const initialQuantity =
+      typeof query.quantity === "string" ? query.quantity : "1";
 
-    if (queryParams["from"]) {
-      setFromIdValue(queryParams["from"] as string);
-    }
-    if (queryParams["item"]) {
-      setItemIdValue(queryParams["item"] as string);
-    }
-    if (queryParams["quantity"]) {
-      setQuantityValue(queryParams["quantity"] as string);
-    }
+    setBinId(initialBin);
+    setItemEvidence([{ value: initialEvidence, kind: "associated" }]);
+    setQuantity(initialQuantity);
+    requestAnimationFrame(() => {
+      (initialBin ? itemEvidenceInput : binInput).current?.focus();
+    });
   }, [location.search]);
+
+  const release = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setValidationError("");
+
+    const locationId = normalizeInventoriusId(binId);
+    const canonicalBatchId = selectedBatchId;
+    const count = Number(quantity);
+
+    if (!isBinId(locationId)) {
+      setValidationError("Scan or enter a BIN label.");
+      binInput.current?.focus();
+      return;
+    }
+    if (!isBatchId(canonicalBatchId)) {
+      setValidationError(
+        "Wait for the item to resolve, or choose a matching batch.",
+      );
+      itemEvidenceInput.current?.focus();
+      return;
+    }
+    if (!Number.isInteger(count) || count < 1) {
+      setValidationError("Quantity must be a positive whole number.");
+      return;
+    }
+
+    const command = {
+      kind: "release" as const,
+      batch_id: canonicalBatchId,
+      quantity: count,
+      unit: "each" as const,
+      location_id: locationId,
+    };
+
+    setSubmitting(true);
+    try {
+      const response = await api.postInventoryOperation(
+        command,
+        idempotency.keyFor(command),
+      );
+      if (response.kind === "problem") {
+        setValidationError(response.title);
+        return;
+      }
+
+      setToastContent({
+        content: (
+          <p>
+            Released {count} × <ItemLabel label={canonicalBatchId} /> from{" "}
+            <ItemLabel label={locationId} />.
+          </p>
+        ),
+        mode: "success",
+      });
+
+      // Releasing several things usually starts from one physical bin.
+      idempotency.clear();
+      setBinId(locationId);
+      setItemEvidence([{ value: "", kind: "associated" }]);
+      setSelectedBatchId("");
+      setQuantity("1");
+      navigate(`/release?from=${encodeURIComponent(locationId)}`, {
+        replace: true,
+      });
+      requestAnimationFrame(() => itemEvidenceInput.current?.focus());
+    } catch {
+      setValidationError(
+        "Could not submit the release. Check the API and retry.",
+      );
+      itemEvidenceInput.current?.focus();
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <form
-      className="form"
-      onSubmit={async (e) => {
-        e.preventDefault();
-
-        const resp = await api.release({
-          from_id: fromIdValue,
-          item_id: itemIdValue,
-          quantity: parseInt(quantityValue),
-        });
-        if (resp.kind == "status") {
-          setAlertContent({
-            content: (
-              <div>
-                Success, Released {quantityValue} count,{" "}
-                <ItemLabel
-                  label={itemIdValue}
-                  onClick={(e) => setAlertContent({})}
-                />
-                , from <ItemLabel label={fromIdValue} />
-              </div>
-            ),
-            mode: "success",
-          });
-
-          setFromIdValue("");
-          setItemIdValue("");
-          setQuantityValue("1");
-          if (location.search) navigate("/release");
-        } else {
-          setAlertContent({
-            content: <div>{resp.title}</div>,
-            mode: "failure",
-          });
-        }
-      }}
+      className="max-w-[40rem] mx-auto"
+      onSubmit={release}
+      autoComplete="off"
     >
-      <h2 className="form-title">Release</h2>
-      <label htmlFor="from_id" className="form-label">
-        Bin Label
+      <h2 className="text-2xl font-bold text-[#04151f] mb-2">
+        Release inventory
+      </h2>
+      <p className="text-[#6d635d] mb-6">
+        Record a batch leaving tracked inventory. Use Move if it remains in
+        another bin.
+      </p>
+
+      {validationError && (
+        <div
+          role="alert"
+          className="mb-5 rounded-md border border-red-300 bg-red-50 px-4 py-3
+            text-red-700"
+        >
+          {validationError}
+        </div>
+      )}
+
+      <label htmlFor="release-bin" className={labelClasses}>
+        Source bin
       </label>
       <input
-        type="text"
-        className="form-single-code-input"
-        id="from_id"
-        name="from_id"
-        value={fromIdValue}
-        onChange={(e) => setFromIdValue(e.target.value)}
+        ref={binInput}
+        id="release-bin"
+        value={binId}
+        onChange={(event) => {
+          const nextBin = event.target.value;
+          if (
+            normalizeInventoriusId(nextBin) !== normalizeInventoriusId(binId)
+          ) {
+            setSelectedBatchId("");
+          }
+          setBinId(nextBin);
+        }}
+        onBlur={() => setBinId(normalizeInventoriusId(binId))}
+        placeholder="BIN000001"
+        spellCheck={false}
+        className={`${inputClasses} mb-5`}
       />
-      <label htmlFor="item_id" className="form-label">
-        Item Label
-      </label>
-      <input
-        type="text"
-        name="item_id"
-        id="item_id"
-        className="form-single-code-input"
-        value={itemIdValue}
-        onChange={(e) => setItemIdValue(e.target.value)}
+
+      <InventoryBatchSelector
+        id="release-item-evidence"
+        firstInputRef={itemEvidenceInput}
+        sourceLocationId={binId}
+        evidence={itemEvidence}
+        setEvidence={setItemEvidence}
+        selectedBatchId={selectedBatchId}
+        setSelectedBatchId={setSelectedBatchId}
       />
-      <label htmlFor="quantity" className="form-label">
+
+      <label htmlFor="release-quantity" className={labelClasses}>
         Quantity
       </label>
       <input
+        id="release-quantity"
         type="number"
-        name="quantity"
-        id="quantity"
-        className="form-single-code-input"
-        value={quantityValue}
-        onChange={(e) => setQuantityValue(e.target.value)}
+        min="1"
+        step="1"
+        inputMode="numeric"
+        value={quantity}
+        onChange={(event) => setQuantity(event.target.value)}
+        className={`${inputClasses} mb-7`}
       />
 
-      <input type="submit" value="Submit" className="form-submit" />
+      <button type="submit" disabled={submitting} className={submitClasses}>
+        {submitting ? "Releasing…" : "Release batch"}
+      </button>
     </form>
   );
 }
-export default Release;

@@ -3,6 +3,7 @@ import { NavLink } from "react-router-dom";
 import NavlinkDropdown from "./primitives/NavlinkDropdown";
 
 import "../styles/Navbar.css";
+import { useAuth } from "./auth/AuthContext";
 
 function Navbar({
   isActive,
@@ -11,6 +12,12 @@ function Navbar({
   isActive: boolean;
   setActive: (s: boolean) => void;
 }) {
+  const { hasOperation } = useAuth();
+  const canMutateCatalog =
+    hasOperation("create-bin") ||
+    hasOperation("create-sku") ||
+    hasOperation("create-batch");
+  const canMutateInventory = hasOperation("inventory-operation");
   return (
     <nav
       onBlur={() => {
@@ -30,35 +37,71 @@ function Navbar({
       <NavLink className="navlink" to="/">
         Home
       </NavLink>
-      <NavlinkDropdown text="New">
-        <NavLink className="navlink" to="/new/bin">
-          New Bin
+      {hasOperation("intake") && (
+        <NavLink className="navlink" to="/capture">
+          Quick Capture
         </NavLink>
-        <NavLink className="navlink" to="/new/sku">
-          Define SKU
-        </NavLink>
-        <NavLink className="navlink" to="/new/batch">
-          Define Batch
-        </NavLink>
-      </NavlinkDropdown>
-      <NavLink className="navlink" to="/move">
-        Move
+      )}
+      {canMutateCatalog && (
+        <NavlinkDropdown text="New">
+          {hasOperation("create-bin") && (
+            <NavLink className="navlink" to="/new/bin">
+              New Bin
+            </NavLink>
+          )}
+          {hasOperation("create-sku") && (
+            <NavLink className="navlink" to="/new/sku">
+              Define SKU
+            </NavLink>
+          )}
+          {hasOperation("create-batch") && (
+            <NavLink className="navlink" to="/new/batch">
+              Define Batch
+            </NavLink>
+          )}
+          {hasOperation("define-process") && (
+            <NavLink className="navlink" to="/processes/new">
+              Define Process
+            </NavLink>
+          )}
+        </NavlinkDropdown>
+      )}
+      <NavLink className="navlink" to="/processes">
+        Manufacturing
       </NavLink>
-      <NavLink className="navlink" to="/audit">
-        Audit
-      </NavLink>
-{/* Receive link removed - will be redesigned */}
-      <NavLink className="navlink" to="/release">
-        Release
-      </NavLink>
-      <NavlinkDropdown text="Admin">
-        <NavLink className="navlink" to="/admin/schema">
-          Schema Admin
-        </NavLink>
+      {canMutateInventory && (
+        <>
+          <NavLink className="navlink" to="/move">
+            Move
+          </NavLink>
+          <NavLink className="navlink" to="/audit">
+            Audit
+          </NavLink>
+          <NavLink className="navlink" to="/receive">
+            Receive
+          </NavLink>
+          <NavLink className="navlink" to="/release">
+            Release
+          </NavLink>
+        </>
+      )}
+      {hasOperation("schema-admin") ? (
+        <NavlinkDropdown text="Admin">
+          <NavLink className="navlink" to="/admin/schema">
+            Schema Admin
+          </NavLink>
+          <NavLink className="navlink" to="/demo/schema">
+            Schema Demo
+          </NavLink>
+          <NavLink className="navlink" to="/admin/settings">
+            Settings
+          </NavLink>
+        </NavlinkDropdown>
+      ) : (
         <NavLink className="navlink" to="/demo/schema">
           Schema Demo
         </NavLink>
-      </NavlinkDropdown>
+      )}
       <NavLink className="navlink" to="/search">
         Search
       </NavLink>

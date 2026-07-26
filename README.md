@@ -1,5 +1,7 @@
 # Inventorius Frontend
 
+[![Build](https://github.com/computemachines/inventorius-frontend/actions/workflows/build-push.yml/badge.svg)](https://github.com/computemachines/inventorius-frontend/actions/workflows/build-push.yml)
+
 React web application for the Inventorius inventory management system. Features server-side rendering for fast QR code scans and a dynamic form system powered by the unified trigger schema.
 
 ## Quick Start (Development)
@@ -85,8 +87,12 @@ Pages are pre-rendered on the server so QR code scans display content immediatel
 The frontend is deployed as a Docker container via GitHub Actions CI/CD:
 
 ```bash
-docker pull ghcr.io/computemachines/inventorius-frontend:latest
+docker pull ghcr.io/computemachines/inventorius-frontend:sha-<full-40-character-commit>
 ```
+
+Images are published only under immutable `sha-<full-40-character-commit>`
+tags. The `development` tag is a moving development-channel convenience tag;
+promotion should deploy an immutable SHA image unchanged.
 
 See [inventorius-deploy](https://github.com/computemachines/inventorius-deploy) for the full Docker Compose stack.
 
@@ -96,6 +102,28 @@ See [inventorius-deploy](https://github.com/computemachines/inventorius-deploy) 
 |----------|-------------|
 | `API_HOSTNAME` | API server URL (for SSR, default: `http://localhost:8000`) |
 | `PORT` | SSR server port (default: `3001`) |
+| `PRODUCT_RELEASE` | Human product-release tag added to Sentry events and `/build.json` at runtime |
+| `DEPLOYMENT_ENVIRONMENT` | Runtime environment name, such as `development`, `staging`, or `production` |
+| `INVENTORIUS_RELEASE_MANIFEST_PATH` | Optional controller-written schema-1 manifest; it overrides `PRODUCT_RELEASE` only when it names the frontend and exactly matches this image revision |
+| `SENTRY_BROWSER_DSN` | Public browser Sentry DSN; omitted disables browser reporting |
+| `SENTRY_SSR_DSN` | Server Sentry DSN; omitted disables SSR reporting |
+
+`/build.json` is a public-safe provenance endpoint. It returns the component
+version, immutable Git revision, product release, runtime environment, and
+build time. No Sentry DSNs, credentials, request data, or source maps are
+served from the runtime image.
+
+The publish workflow needs GitHub secret `SENTRY_AUTH_TOKEN` and repository
+variables `SENTRY_ORG`, `SENTRY_CLIENT_PROJECT`, and `SENTRY_SERVER_PROJECT`
+only to upload private source maps. It skips that upload when any is absent.
+Runtime DSNs belong in the deployment environment, never in this repository or
+the image.
+
+The manifest is read for every `/build.json` and SSR response. It must have
+`schema_version: 1`, a non-empty `product_release`, and
+`components.frontend.revision` equal to the image's full immutable revision.
+Missing, stale, or malformed manifests safely fall back to `PRODUCT_RELEASE`
+(then the component version).
 
 ## Design System
 

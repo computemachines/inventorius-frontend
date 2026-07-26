@@ -1,125 +1,269 @@
-// src/components/features/Receive.tsx
-// Fully human reviewed: NO
-// Progress: NONE
-//
-// Conversation:
-// > (no discussion yet)
-
-
 import * as React from "react";
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { parse } from "query-string";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { ApiContext } from "../../api-client/api-client";
-import { ToastContext } from "../primitives/Toast";
-
-import "../../styles/form.css";
-import { json } from "express";
+import { normalizeInventoriusId } from "../../identifiers";
+import { Code } from "../composites/CodesInput";
+import InventoryBatchSelector from "../composites/InventoryBatchSelector";
 import ItemLabel from "../primitives/ItemLabel";
-import { parse, stringifyUrl } from "query-string";
-import { generatePath, useNavigate, useLocation } from "react-router-dom";
-// import "../styles/Receive.css"
+import { ToastContext } from "../primitives/Toast";
+import {
+  inputClasses,
+  isBatchId,
+  isBinId,
+  isSkuId,
+  labelClasses,
+  submitClasses,
+  useCommandIdempotency,
+} from "./inventory-operation-form";
 
-function Receive() {
+const emptyEvidence: Code[] = [{ value: "", kind: "associated" }];
+
+function dedupedObservedCodes(evidence: Code[]): string[] {
+  return Array.from(
+    new Set(evidence.map(({ value }) => value.trim()).filter(Boolean)),
+  ).sort();
+}
+
+export default function Receive() {
   const location = useLocation();
   const navigate = useNavigate();
   const api = useContext(ApiContext);
-  const { setToastContent: setAlertContent } = useContext(ToastContext);
+  const { setToastContent } = useContext(ToastContext);
+  const idempotency = useCommandIdempotency();
 
-  const [intoIdValue, setIntoIdValue] = useState("");
-  const [itemIdValue, setItemIdValue] = useState("");
-  const [quantityValue, setQuantityValue] = useState("1");
+  const [binId, setBinId] = useState("");
+  const [itemEvidence, setItemEvidence] = useState<Code[]>(emptyEvidence);
+  const [selectedBatchId, setSelectedBatchId] = useState("");
+  const [selectedSkuId, setSelectedSkuId] = useState("");
+  const [observedEvidence, setObservedEvidence] =
+    useState<Code[]>(emptyEvidence);
+  const [quantity, setQuantity] = useState("1");
+  const [validationError, setValidationError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const binInput = useRef<HTMLInputElement>(null);
+  const itemEvidenceInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const queryParams = parse(location.search);
-    if (queryParams["into"]) {
-      setIntoIdValue(queryParams["into"] as string);
-    }
-    if (queryParams["item"]) {
-      setItemIdValue(queryParams["item"] as string);
-    }
-    if (queryParams["quantity"]) {
-      setQuantityValue(queryParams["quantity"] as string);
-    }
+    const query = parse(location.search);
+    const initialBin =
+      typeof query.into === "string" ? normalizeInventoriusId(query.into) : "";
+    const initialBatch =
+      typeof query.batch === "string"
+        ? normalizeInventoriusId(query.batch)
+        : "";
+    const initialQuantity =
+      typeof query.quantity === "string" ? query.quantity : "1";
+
+    setBinId(initialBin);
+    // A batch deep-link is scanner evidence, not a bypass around resolution.
+    setItemEvidence([{ value: initialBatch, kind: "associated" }]);
+    setSelectedBatchId("");
+    setSelectedSkuId("");
+    setObservedEvidence(emptyEvidence);
+    setQuantity(initialQuantity);
+    requestAnimationFrame(() => {
+      (initialBin ? itemEvidenceInput : binInput).current?.focus();
+    });
   }, [location.search]);
+
+  const receive = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setValidationError("");
+
+    const destination = normalizeInventoriusId(binId);
+    const count = Number(quantity);
+    const chosenBatchId = selectedBatchId;
+    const chosenSkuId = selectedSkuId;
+    const observedCodes = dedupedObservedCodes(observedEvidence);
+    if (!isBinId(destination)) {
+      setValidationError("Scan or enter a destination BIN label.");
+      binInput.current?.focus();
+      return;
+    }
+    if (!isBatchId(chosenBatchId) && !isSkuId(chosenSkuId)) {
+      setValidationError(
+        "Wait for the item to resolve, then choose an existing batch or a SKU for a new batch.",
+      );
+      itemEvidenceInput.current?.focus();
+      return;
+    }
+    if (!Number.isInteger(count) || count < 1) {
+      setValidationError("Quantity must be a positive whole number.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      if (isBatchId(chosenBatchId)) {
+        const command = {
+          kind: "receive" as const,
+          batch_id: chosenBatchId,
+          quantity: count,
+          unit: "each" as const,
+          location_id: destination,
+          ...(observedCodes.length ? { observed_codes: observedCodes } : {}),
+        };
+        const response = await api.postInventoryOperation(
+          command,
+          idempotency.keyFor(command),
+        );
+        if (response.kind === "problem") {
+          setValidationError(response.title);
+          return;
+        }
+
+        setToastContent({
+          content: (
+            <p>
+              Received {count} × <ItemLabel label={chosenBatchId} /> into{" "}
+              <ItemLabel label={destination} />.{" "}
+              <Link
+                className="font-semibold underline"
+                to={`/activity/${encodeURIComponent(response.state.operation_id)}`}
+              >
+                Review or correct
+              </Link>
+            </p>
+          ),
+          mode: "success",
+        });
+      } else {
+        const payload = {
+          sku_id: chosenSkuId,
+          bin_id: destination,
+          quantity: count,
+          unit: "each" as const,
+          ...(observedCodes.length ? { observed_codes: observedCodes } : {}),
+        };
+        const response = await api.intake(payload, idempotency.keyFor(payload));
+        if (response.kind === "problem") {
+          setValidationError(response.title);
+          return;
+        }
+
+        setToastContent({
+          content: (
+            <p>
+              Received {count} × new <ItemLabel label={response.state.batch_id} />
+              {" under "}<ItemLabel label={chosenSkuId} /> into{" "}
+              <ItemLabel label={destination} />.{" "}
+              <Link
+                className="font-semibold underline"
+                to={`/activity/${encodeURIComponent(response.state.operation_id)}`}
+              >
+                Review or correct
+              </Link>
+            </p>
+          ),
+          mode: "success",
+        });
+      }
+
+      // Keep one physical destination, but only discard a command after its
+      // response confirms success. Failed/lost responses retain this exact
+      // payload and key for a safe retry.
+      idempotency.clear();
+      setBinId(destination);
+      setItemEvidence(emptyEvidence);
+      setSelectedBatchId("");
+      setSelectedSkuId("");
+      setObservedEvidence(emptyEvidence);
+      setQuantity("1");
+      navigate(`/receive?into=${encodeURIComponent(destination)}`, {
+        replace: true,
+      });
+      requestAnimationFrame(() => itemEvidenceInput.current?.focus());
+    } catch {
+      setValidationError(
+        "Could not submit the receipt. Check the API and retry.",
+      );
+      itemEvidenceInput.current?.focus();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const captureHref = isBinId(normalizeInventoriusId(binId))
+    ? `/capture?into=${encodeURIComponent(normalizeInventoriusId(binId))}`
+    : "/capture";
 
   return (
     <form
-      className="form"
-      onSubmit={async (e) => {
-        e.preventDefault();
-
-        const resp = await api.receive({
-          into_id: intoIdValue,
-          item_id: itemIdValue,
-          quantity: parseInt(quantityValue),
-        });
-        if (resp.kind == "status") {
-          setAlertContent({
-            content: (
-              <div>
-                Success. Added {quantityValue} count,{" "}
-                <ItemLabel
-                  label={itemIdValue}
-                  onClick={(e) => setAlertContent({})}
-                />
-                , to{" "}
-                <ItemLabel
-                  label={intoIdValue}
-                  onClick={(e) => setAlertContent({})}
-                />
-              </div>
-            ),
-            mode: "success",
-          });
-          setItemIdValue("");
-          setIntoIdValue("");
-          setQuantityValue("1");
-          if (location.search) navigate("/receive");
-        } else {
-          setAlertContent({
-            content: <div>{resp.title}</div>,
-            mode: "failure",
-          });
-        }
-      }}
+      className="max-w-[40rem] mx-auto"
+      onSubmit={receive}
+      autoComplete="off"
     >
-      <h2 className="form-title">Receive</h2>
-      <label htmlFor="into_id" className="form-label">
-        Bin Label
+      <h2 className="text-2xl font-bold text-[#04151f] mb-2">
+        Receive inventory
+      </h2>
+      <p className="text-[#6d635d] mb-6">
+        Scan an existing batch, or explicitly choose a SKU when this arriving
+        object needs a new batch. If it is unknown, use Quick Capture.
+      </p>
+
+      {validationError && (
+        <div
+          role="alert"
+          className="mb-5 rounded-md border border-red-300 bg-red-50 px-4 py-3
+            text-red-700"
+        >
+          {validationError}
+        </div>
+      )}
+
+      <label htmlFor="receive-bin" className={labelClasses}>
+        Destination bin
       </label>
       <input
-        type="text"
-        name="into_id"
-        id="into_id"
-        className="form-single-code-input"
-        value={intoIdValue}
-        onChange={(e) => setIntoIdValue(e.target.value)}
+        ref={binInput}
+        id="receive-bin"
+        value={binId}
+        onChange={(event) => setBinId(event.target.value)}
+        onBlur={() => setBinId(normalizeInventoriusId(binId))}
+        placeholder="BIN000001"
+        spellCheck={false}
+        className={`${inputClasses} mb-5`}
       />
-      <label htmlFor="item_id" className="form-label">
-        Item Label
-      </label>
-      <input
-        type="text"
-        name="item_id"
-        id="item_id"
-        className="form-single-code-input"
-        value={itemIdValue}
-        onChange={(e) => setItemIdValue(e.target.value)}
+
+      <InventoryBatchSelector
+        id="receive-item-evidence"
+        firstInputRef={itemEvidenceInput}
+        evidence={itemEvidence}
+        setEvidence={setItemEvidence}
+        selectedBatchId={selectedBatchId}
+        setSelectedBatchId={setSelectedBatchId}
+        selectedSkuId={selectedSkuId}
+        setSelectedSkuId={setSelectedSkuId}
+        observedEvidence={observedEvidence}
+        setObservedEvidence={setObservedEvidence}
+        unknownAction={
+          <Link className="font-semibold underline" to={captureHref}>
+            Use Quick Capture instead.
+          </Link>
+        }
       />
-      <label htmlFor="quantity" className="form-label">
+
+      <label htmlFor="receive-quantity" className={labelClasses}>
         Quantity
       </label>
       <input
+        id="receive-quantity"
         type="number"
-        name="quantity"
-        id="quantity"
-        className="form-single-code-input"
-        value={quantityValue}
-        onChange={(e) => setQuantityValue(e.target.value)}
+        min="1"
+        step="1"
+        inputMode="numeric"
+        value={quantity}
+        onChange={(event) => setQuantity(event.target.value)}
+        className={`${inputClasses} mb-7`}
       />
 
-      <input type="submit" value="Submit" className="form-submit" />
+      <button type="submit" disabled={submitting} className={submitClasses}>
+        {submitting ? "Receiving…" : "Receive inventory"}
+      </button>
     </form>
   );
 }
-export default Receive;

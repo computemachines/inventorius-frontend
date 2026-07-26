@@ -8,9 +8,10 @@
     "build:client:dev": "cross-env NO_HOT=true webpack",
     "build:server": "cross-env NODE_ENV=production webpack --config webpack.server.config.js",
     "build:server:dev": "webpack --config webpack.server.config.js",
+    "typecheck": "tsc --noEmit",
+    "test:release-manifest": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\"}' node -r ts-node/register --test tests/release-manifest.test.cjs",
     "server:dev": "node dist/server.bundle.js -p 8080 --dev",
-    "server:only": "node dist/server.bundle.js -p 8080 --dev --noclient",
-    "test": "jest"
+    "server:only": "node dist/server.bundle.js -p 8080 --dev --noclient"
   },
   "repository": {
     "type": "git",

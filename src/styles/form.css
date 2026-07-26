@@ -29,7 +29,7 @@
   background-color: white;
 }
 
-.form-print-button {
+.flex-row > .print-control {
   flex-basis: 4em;
   flex-grow: 0.3;
 }
@@ -42,4 +42,28 @@
   border: unset;
   border-radius: 0.3em;
   padding: 0.4em;
+}
+
+.form-created-resource {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+}
+
+.form-validation-error {
+  margin: 0.75rem 0 0;
+  color: #9e2a2a;
+}
+
+.form-secondary-button {
+  margin-top: 1rem;
+  border: 1px solid #26532b;
+  border-radius: 0.3em;
+  background: white;
+  color: #26532b;
+  padding: 0.4em;
+}
+
+.form-secondary-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }

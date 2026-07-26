@@ -2,12 +2,18 @@ const webpack = require("webpack");
 const path = require("path");
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const version = require("./package.json").version;
+const buildRevision = process.env.BUILD_REVISION || "dev";
+const buildTime = process.env.BUILD_TIME || "unknown";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
 
 module.exports = {
   mode: isDevelopment ? "development" : "production",
-  devtool: isDevelopment ? "inline-source-map" : "source-map",
+  devtool: isDevelopment
+    ? "inline-source-map"
+    : process.env.SOURCE_MAPS === "true"
+      ? "source-map"
+      : false,
   target: "node",
   entry: {
     server: "./src/server/entry",
@@ -44,7 +50,9 @@ module.exports = {
       filename: "./assets/main.css",
     }),
     new webpack.DefinePlugin({
-      "process.env.VERSION": JSON.stringify(version),
+      "process.env.COMPONENT_VERSION": JSON.stringify(version),
+      "process.env.BUILD_REVISION": JSON.stringify(buildRevision),
+      "process.env.BUILD_TIME": JSON.stringify(buildTime),
       "process.env.NODE_ENV": JSON.stringify(
         process.env.NODE_ENV || "development"
       ),

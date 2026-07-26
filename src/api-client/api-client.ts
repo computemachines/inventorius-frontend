@@ -8,40 +8,46 @@ import {
   Problem,
   Sku,
   SearchResults,
-  NextSku,
-  NextBatch,
   Batch,
   ApiStatus,
+  BinCreationProblem,
+  BinCreationResult,
   Status,
   Stats,
   CodeUsageResult,
-  CodeUsageRef,
   AttributeBundle,
   BundleLookupResult,
   BundleContext,
+  CaptureResult,
+  IntakeRequest,
+  IntakeResult,
+  InventoryOperationCommand,
+  InventoryOperationCorrectionRequest,
+  InventoryOperationReceiptListResult,
+  InventoryOperationReceiptResult,
+  InventoryOperationResult,
+  InventoryCandidatesResult,
+  AuditObservationRequest,
+  AuditObservationResult,
+  AuditReconciliationRequest,
+  AuditSnapshotResult,
+  ProcessDefinition,
+  ProcessDefinitionState,
+  ProcessDefinitionWrite,
+  SkuCreationRequest,
+  BatchCreationRequest,
+  ResourceCreationResult,
+  ResourceCreationProblem,
+  RestOperation,
 } from "./data-models";
-
-/**
- * Mock code usage data - simulates which SKUs/batches share certain codes.
- * TODO: Replace with real API endpoint /api/codes/{code}/usage
- */
-const MOCK_CODE_USAGE: Record<string, CodeUsageRef[]> = {
-  "RC0402FR": [
-    { type: "sku", id: "SKU000012", name: "10kΩ 0402 Resistor (DigiKey)", relationship: "associated" },
-    { type: "sku", id: "SKU000045", name: "10kΩ 0402 Resistor (Mouser)", relationship: "associated" },
-  ],
-  "ACME": [
-    { type: "sku", id: "SKU000012", name: "10kΩ 0402 Resistor (DigiKey)", relationship: "associated" },
-    { type: "sku", id: "SKU000013", name: "4.7kΩ 0402 Resistor", relationship: "associated" },
-    { type: "sku", id: "SKU000099", name: "100Ω 0805 Resistor", relationship: "associated" },
-  ],
-  "012345678901": [
-    { type: "sku", id: "SKU000012", name: "10kΩ 0402 Resistor (DigiKey)", relationship: "owned" },
-  ],
-  "LOT-2024-001": [
-    { type: "batch", id: "BAT000001", name: "DigiKey Order #123", relationship: "owned" },
-  ],
-};
+import type {
+  AuthProblem,
+  ApplicationRootResource,
+  AuthSessionResource,
+  AuthVerificationResult,
+  PasskeyCeremony,
+  PasskeyCredentialJSON,
+} from "./auth-contracts";
 
 export interface FrontloadContext {
   api: ApiClient;
@@ -52,19 +58,37 @@ export interface FrontloadContext {
  */
 export class ApiClient {
   hostname: string;
+  private cookie?: string;
+  private csrfToken?: string;
 
 
-  constructor(hostname = "") {
+  constructor(hostname = "", options: { cookie?: string } = {}) {
     this.hostname = hostname;
+    this.cookie = options.cookie;
   }
 
+  setCsrfToken(token?: string): void {
+    this.csrfToken = token;
+  }
 
   private async _fetch(url: string, options?: RequestInit): Promise<Response> {
     const method = options?.method ?? "GET";
+    const headers = new Headers(options?.headers);
+    if (this.cookie) headers.set("Cookie", this.cookie);
+    if (
+      this.csrfToken &&
+      !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())
+    ) {
+      headers.set("X-CSRF-Token", this.csrfToken);
+    }
     const start = Date.now();
     console.log(`[api] ${method} ${url}`);
     try {
-      const resp = await fetch(url, options);
+      const resp = await fetch(url, {
+        ...options,
+        headers,
+        credentials: this.hostname ? undefined : "same-origin",
+      });
       console.log(`[api] ${method} ${url} → ${resp.status} (${Date.now() - start}ms)`);
       return resp;
     } catch (err) {
@@ -74,7 +98,7 @@ export class ApiClient {
   }
 
 
-  hydrate<T extends Sku | Batch>(server_rendered: T): T {
+  hydrate<T extends Sku | Batch | ProcessDefinition>(server_rendered: T): T {
     if (Object.getPrototypeOf(server_rendered) !== Object.prototype)
       return server_rendered;
     switch (server_rendered.kind) {
@@ -83,6 +107,9 @@ export class ApiClient {
       break;
     case "batch":
       Object.setPrototypeOf(server_rendered, Batch.prototype);
+      break;
+    case "process-definition":
+      Object.setPrototypeOf(server_rendered, ProcessDefinition.prototype);
       break;
     default:
         let _exhaustive_check: never; // eslint-disable-line
@@ -93,6 +120,7 @@ export class ApiClient {
         CallableRestOperation.prototype
       );
       server_rendered.operations[key].hostname = this.hostname;
+      server_rendered.operations[key].bindTransport(this._fetch.bind(this));
     }
     return server_rendered;
   }
@@ -101,7 +129,11 @@ export class ApiClient {
   async getStatus(): Promise<ApiStatus> {
     const resp = await this._fetch(`${this.hostname}/api/status`);
     if (!resp.ok) throw Error(`${this.hostname}/api/status returned error code`);
-    return new ApiStatus({ ... await resp.json(), hostname: this.hostname });
+    return new ApiStatus({
+      ...await resp.json(),
+      hostname: this.hostname,
+      transport: this._fetch.bind(this),
+    });
   }
 
 
@@ -113,27 +145,37 @@ export class ApiClient {
   }
 
 
+  /**
+   * Intake either captures an unknown item or receives a deliberately chosen
+   * new batch under an existing SKU. Both paths share one idempotent command.
+   */
+  async intake(
+    params: IntakeRequest,
+    idempotencyKey: string,
+  ): Promise<IntakeResult | Problem> {
+    const resp = await this._fetch(`${this.hostname}/api/intake`, {
+      method: "POST",
+      body: JSON.stringify(params),
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+    });
+    const json = await resp.json();
+    if (resp.ok) return { ...json, kind: "status" };
+    return { ...json, kind: "problem" };
+  }
+
+
   async getNextBin(): Promise<NextBin> {
     const resp = await this._fetch(`${this.hostname}/api/next/bin`);
     const json = await resp.json();
     if (!resp.ok) throw Error(`${this.hostname}/api/next/bin returned error status`);
-    return new NextBin({ ...json, hostname: this.hostname });
-  }
-
-
-  async getNextSku(): Promise<NextSku> {
-    const resp = await this._fetch(`${this.hostname}/api/next/sku`);
-    const json = await resp.json();
-    if (!resp.ok) throw Error(`${this.hostname}/api/next/sku returned error status`);
-    return new NextSku({ ...json, hostname: this.hostname });
-  }
-
-
-  async getNextBatch(): Promise<NextBatch> {
-    const resp = await this._fetch(`${this.hostname}/api/next/batch`);
-    const json = await resp.json();
-    if (!resp.ok) throw Error(`${this.hostname}/api/next/sku returned error status`);
-    return new NextBatch({ ...json, hostname: this.hostname });
+    return new NextBin({
+      ...json,
+      hostname: this.hostname,
+      transport: this._fetch.bind(this),
+    });
   }
 
 
@@ -156,24 +198,34 @@ export class ApiClient {
     const resp = await this._fetch(`${this.hostname}/api/bin/${id}`);
     const json = await resp.json();
 
-    if (resp.ok) return new Bin({ ...json, hostname: this.hostname });
+    if (resp.ok) {
+      return new Bin({
+        ...json,
+        hostname: this.hostname,
+        transport: this._fetch.bind(this),
+      });
+    }
     else return { ...json, kind: "problem" };
   }
 
 
-  async createBin({ id, props }: { id: string; props?: unknown }): Promise<Status | Problem> {
+  async createBin(
+    { id, props }: { id?: string; props?: unknown },
+    idempotencyKey: string,
+  ): Promise<BinCreationResult | BinCreationProblem> {
     const resp = await this._fetch(`${this.hostname}/api/bins`, {
       method: "POST",
       body: JSON.stringify({ id, props }),
       headers: {
         "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
       },
     });
     const json = await resp.json();
     if (resp.ok) {
       return { ...json, kind: "status" };
     } else {
-      return { ...json, kind: "problem" };
+      return { ...json, kind: "problem", httpStatus: resp.status };
     }
   }
 
@@ -181,30 +233,34 @@ export class ApiClient {
   async getSku(id: string): Promise<Sku | Problem> {
     const resp = await this._fetch(`${this.hostname}/api/sku/${id}`);
     const json = await resp.json();
-    if (resp.ok) return new Sku({ ...json, hostname: this.hostname });
+    if (resp.ok) {
+      return new Sku({
+        ...json,
+        hostname: this.hostname,
+        transport: this._fetch.bind(this),
+      });
+    }
     else return { ...json, kind: "problem" };
   }
 
 
-  async createSku(params: {
-    id: string;
-    name: string;
-    props?: unknown;
-    owned_codes?: string[];
-    associated_codes?: string[];
-  }): Promise<Status | Problem> {
+  async createSku(
+    params: SkuCreationRequest,
+    idempotencyKey: string,
+  ): Promise<ResourceCreationResult | ResourceCreationProblem> {
     const resp = await this._fetch(`${this.hostname}/api/skus`, {
       method: "POST",
       body: JSON.stringify(params),
       headers: {
         "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
       },
     });
     const json = await resp.json();
     if (resp.ok) {
       return { ...json, kind: "status" };
     } else {
-      return { ...json, kind: "problem" };
+      return { ...json, kind: "problem", httpStatus: resp.status };
     }
   }
 
@@ -212,99 +268,318 @@ export class ApiClient {
   async getBatch(batch_id: string): Promise<Batch | Problem> {
     const resp = await this._fetch(`${this.hostname}/api/batch/${batch_id}`);
     const json = await resp.json();
-    if (resp.ok) return new Batch({ ...json, hostname: this.hostname });
+    if (resp.ok) {
+      return new Batch({
+        ...json,
+        hostname: this.hostname,
+        transport: this._fetch.bind(this),
+      });
+    }
     else return { ...json, kind: "problem" };
   }
 
 
-  async createBatch(params: {
-    id: string;
-    sku_id?: string;
-    name?: string;
-    owned_codes?: string[];
-    associated_codes?: string[];
-    props?: unknown;
-  }): Promise<Status | Problem> {
+  async createBatch(
+    params: BatchCreationRequest,
+    idempotencyKey: string,
+  ): Promise<ResourceCreationResult | ResourceCreationProblem> {
     const resp = await this._fetch(`${this.hostname}/api/batches`, {
       method: "POST",
       body: JSON.stringify(params),
       headers: {
         "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
       },
     });
     const json = await resp.json();
     if (resp.ok) {
       return { ...json, kind: "status" };
     } else {
-      return { ...json, kind: "problem" };
+      return { ...json, kind: "problem", httpStatus: resp.status };
     }
   }
 
 
-  async receive({
-    into_id,
-    item_id,
-    quantity,
-  }: {
-    into_id: string;
-    item_id: string;
-    quantity: number;
-  }): Promise<Status | Problem> {
-    const resp = await this._fetch(`${this.hostname}/api/bin/${into_id}/contents`, {
+  async postInventoryOperation(
+    command: InventoryOperationCommand,
+    idempotencyKey: string,
+  ): Promise<InventoryOperationResult | Problem> {
+    const resp = await this._fetch(`${this.hostname}/api/inventory-operations`, {
       method: "POST",
-      body: JSON.stringify({
-        id: item_id,
-        quantity,
-      }),
+      body: JSON.stringify(command),
       headers: {
         "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
       },
     });
     const json = await resp.json();
-    if (resp.ok) {
-      return { ...json, kind: "status" };
-    } else {
-      return { ...json, kind: "problem" };
-    }
+    if (resp.ok) return { ...json, kind: "status" };
+    return { ...json, kind: "problem" };
   }
 
-  async release({ from_id, item_id, quantity }): Promise<Status | Problem> {
-    const resp = await this._fetch(`${this.hostname}/api/bin/${from_id}/contents`, {
-      method: "POST",
-      body: JSON.stringify({
-        id: item_id,
-        quantity: -quantity,
-      }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-    const json = await resp.json();
-    if (resp.ok) {
-      return {...json, kind: "status"};
-    } else {
-      return {...json, kind: "problem"};
-    }
+  async getAuthSession(): Promise<AuthSessionResource> {
+    const response = await this._fetch(`${this.hostname}/api/auth/session`);
+    if (!response.ok) throw new Error("Unable to read the authentication session.");
+    return response.json();
   }
 
-  async move({ from_id, to_id, item_id, quantity }): Promise < Status | Problem > {
-    const resp = await this._fetch(`${this.hostname}/api/bin/${from_id}/contents/move`, {
-      method: "PUT",
-      body: JSON.stringify({
-        id: item_id,
-        destination: to_id,
-        quantity,
-      }),
-      headers: {
-        "Content-Type": "application/json",
+  async getApplicationRoot(): Promise<ApplicationRootResource> {
+    const response = await this._fetch(`${this.hostname}/api/`);
+    if (!response.ok) throw new Error("Unable to read the application root.");
+    return response.json();
+  }
+
+  async startBootstrapRegistration(
+    bootstrapToken: string
+  ): Promise<PasskeyCeremony | AuthProblem> {
+    const response = await this._fetch(
+      `${this.hostname}/api/auth/bootstrap/registration/options`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bootstrap_token: bootstrapToken }),
       }
+    );
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async startRecoveryRegistration(
+    recoveryCode: string
+  ): Promise<PasskeyCeremony | AuthProblem> {
+    const response = await this._fetch(
+      `${this.hostname}/api/auth/bootstrap/registration/options`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recovery_code: recoveryCode }),
+      }
+    );
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async startAdditionalPasskeyRegistration():
+    Promise<PasskeyCeremony | AuthProblem> {
+    const response = await this._fetch(
+      `${this.hostname}/api/auth/bootstrap/registration/options`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }
+    );
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async finishBootstrapRegistration(
+    ceremony: PasskeyCeremony,
+    credential: PasskeyCredentialJSON
+  ): Promise<AuthVerificationResult | AuthProblem> {
+    const verify = ceremony.operations.find((operation) => operation.rel === "verify");
+    if (!verify) throw new Error("Registration ceremony has no verification operation.");
+    const response = await this._fetch(`${this.hostname}${verify.href}`, {
+      method: verify.method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ceremony_id: ceremony.state.ceremony_id,
+        credential,
+      }),
+    });
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async startPasskeyAuthentication(): Promise<PasskeyCeremony | AuthProblem> {
+    const response = await this._fetch(
+      `${this.hostname}/api/auth/passkeys/authentication/options`,
+      { method: "POST" }
+    );
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async localLogin(
+    operation: RestOperation,
+    token: string
+  ): Promise<AuthVerificationResult | AuthProblem> {
+    const response = await this._fetch(`${this.hostname}${operation.href}`, {
+      method: operation.method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async finishPasskeyAuthentication(
+    ceremony: PasskeyCeremony,
+    credential: PasskeyCredentialJSON
+  ): Promise<AuthVerificationResult | AuthProblem> {
+    const verify = ceremony.operations.find((operation) => operation.rel === "verify");
+    if (!verify) throw new Error("Authentication ceremony has no verification operation.");
+    const response = await this._fetch(`${this.hostname}${verify.href}`, {
+      method: verify.method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ceremony_id: ceremony.state.ceremony_id,
+        credential,
+      }),
+    });
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async logout(): Promise<void> {
+    const response = await this._fetch(`${this.hostname}/api/auth/logout`, {
+      method: "POST",
+    });
+    if (!response.ok) throw new Error("Unable to sign out.");
+    this.csrfToken = undefined;
+  }
+
+  async getInventoryOperations(
+    limit = 8,
+  ): Promise<InventoryOperationReceiptListResult | Problem> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    const resp = await this._fetch(
+      `${this.hostname}/api/inventory-operations?${params.toString()}`,
+    );
+    const json = await resp.json();
+    if (resp.ok) {
+      return { ...json, kind: "inventory-operation-receipt-list" };
+    }
+    return { ...json, kind: "problem" };
+  }
+
+
+  async getInventoryOperation(
+    operationId: string,
+  ): Promise<InventoryOperationReceiptResult | Problem> {
+    const resp = await this._fetch(
+      `${this.hostname}/api/inventory-operations/${encodeURIComponent(operationId)}`,
+    );
+    const json = await resp.json();
+    if (resp.ok) {
+      return { ...json, kind: "inventory-operation-receipt" };
+    }
+    return { ...json, kind: "problem" };
+  }
+
+
+  async correctInventoryOperation(
+    operationId: string,
+    correction: InventoryOperationCorrectionRequest,
+    idempotencyKey: string,
+  ): Promise<InventoryOperationReceiptResult | Problem> {
+    const resp = await this._fetch(
+      `${this.hostname}/api/inventory-operations/` +
+        `${encodeURIComponent(operationId)}/corrections`,
+      {
+        method: "POST",
+        body: JSON.stringify(correction),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+      },
+    );
+    const json = await resp.json();
+    if (resp.ok) {
+      return { ...json, kind: "inventory-operation-receipt" };
+    }
+    return { ...json, kind: "problem" };
+  }
+
+
+  /** Backwards-compatible name for Quick Capture callers. */
+  async quickCapture(
+    params: Extract<IntakeRequest, { description: string }>,
+    idempotencyKey: string,
+  ): Promise<CaptureResult | Problem> {
+    const response = await this.intake(params, idempotencyKey);
+    // The `description` request branch is guaranteed by the intake contract
+    // to allocate a SKU, and therefore has the CaptureResult response shape.
+    return response.kind === "problem" ? response : (response as CaptureResult);
+  }
+
+
+  async getInventoryCandidates({
+    evidence,
+    sourceLocationId,
+    signal,
+  }: {
+    evidence: string[];
+    sourceLocationId?: string;
+    signal?: AbortSignal;
+  }): Promise<InventoryCandidatesResult | Problem> {
+    const params = new URLSearchParams();
+    for (const value of evidence) params.append("evidence", value);
+    if (sourceLocationId) {
+      params.set("source_location_id", sourceLocationId);
+    }
+
+    const resp = await this._fetch(
+      `${this.hostname}/api/inventory-candidates?${params.toString()}`,
+      { signal },
+    );
+    const json = await resp.json();
+    if (resp.ok) return { ...json, kind: "inventory-candidates" };
+    return { ...json, kind: "problem" };
+  }
+
+
+  async getAuditSnapshot(
+    locationId: string,
+  ): Promise<AuditSnapshotResult | Problem> {
+    const resp = await this._fetch(
+      `${this.hostname}/api/audit-snapshots/${encodeURIComponent(locationId)}`,
+    );
+    const json = await resp.json();
+    if (resp.ok) return { ...json, kind: "audit-snapshot" };
+    return { ...json, kind: "problem" };
+  }
+
+  async recordAuditObservation(
+    observation: AuditObservationRequest,
+    idempotencyKey: string,
+  ): Promise<AuditObservationResult | Problem> {
+    const resp = await this._fetch(`${this.hostname}/api/audit-observations`, {
+      method: "POST",
+      body: JSON.stringify(observation),
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
     });
     const json = await resp.json();
-    if(resp.ok) {
-      return { ...json, kind: "status" };
-    } else {
-      return { ...json, kind: "problem" };
+    if (resp.ok) return { ...json, kind: "audit-observation" };
+    return { ...json, kind: "problem" };
+  }
+
+  async reconcileAuditObservation(
+    observationId: string,
+    reconciliation: AuditReconciliationRequest,
+    idempotencyKey: string,
+  ): Promise<InventoryOperationReceiptResult | Problem> {
+    const resp = await this._fetch(
+      `${this.hostname}/api/audit-observations/` +
+        `${encodeURIComponent(observationId)}/reconciliation`,
+      {
+        method: "POST",
+        body: JSON.stringify(reconciliation),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+      },
+    );
+    const json = await resp.json();
+    if (resp.ok) {
+      return { ...json, kind: "inventory-operation-receipt" };
     }
+    return { ...json, kind: "problem" };
   }
 
   // ===========================================================================
@@ -404,23 +679,74 @@ export class ApiClient {
   }
 
   // ===========================================================================
-  // Mock Code Label Methods
+  // Code Label Methods
   // ===========================================================================
 
   /**
-   * Look up which SKUs/batches use a given code (mock implementation)
-   * In production, this would hit /api/codes/{code}/usage
+   * Look up which SKUs/batches use a given code.
    */
   async getCodeUsage(code: string): Promise<CodeUsageResult> {
-    await new Promise(resolve => setTimeout(resolve, 40));
-
-    const usedBy = MOCK_CODE_USAGE[code] ?? [];
+    const resp = await this._fetch(
+      `${this.hostname}/api/codes/${encodeURIComponent(code)}/usage`,
+    );
+    if (!resp.ok) {
+      throw Error(`${this.hostname}/api/codes returned error status`);
+    }
+    const result = await resp.json();
 
     return {
+      ...result,
       kind: "code-usage-result",
-      code,
-      usedBy,
     };
+  }
+
+
+  async listProcessDefinitions(
+    query = ""
+  ): Promise<ProcessDefinitionState[] | Problem> {
+    const params = query ? `?${new URLSearchParams({ query }).toString()}` : "";
+    const resp = await this._fetch(
+      `${this.hostname}/api/process-definitions${params}`
+    );
+    const json = await resp.json();
+    if (resp.ok) return json.state;
+    return { ...json, kind: "problem" };
+  }
+
+
+  async getProcessDefinition(
+    id: string,
+    revision?: number
+  ): Promise<ProcessDefinition | Problem> {
+    const params = revision
+      ? `?${new URLSearchParams({ revision: String(revision) }).toString()}`
+      : "";
+    const resp = await this._fetch(
+      `${this.hostname}/api/process-definition/${id}${params}`
+    );
+    const json = await resp.json();
+    if (resp.ok) {
+      return new ProcessDefinition({
+        ...json,
+        hostname: this.hostname,
+        transport: this._fetch.bind(this),
+      });
+    }
+    return { ...json, kind: "problem" };
+  }
+
+
+  async createProcessDefinition(
+    definition: ProcessDefinitionWrite
+  ): Promise<Status | Problem> {
+    const resp = await this._fetch(`${this.hostname}/api/process-definitions`, {
+      method: "POST",
+      body: JSON.stringify(definition),
+      headers: { "Content-Type": "application/json" },
+    });
+    const json = await resp.json();
+    if (resp.ok) return { ...json, kind: "status" };
+    return { ...json, kind: "problem" };
   }
 
   // ===========================================================================

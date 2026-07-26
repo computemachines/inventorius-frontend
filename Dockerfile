@@ -12,11 +12,23 @@ EXPOSE 3001
 CMD ["npm", "run", "start", "--", "--host=0.0.0.0", "--port=3001"]
 
 FROM dependencies AS build
+ARG BUILD_REVISION=dev
+ARG BUILD_TIME=unknown
+ENV BUILD_REVISION=${BUILD_REVISION}
+ENV BUILD_TIME=${BUILD_TIME}
 COPY . .
 RUN npm run build:client && npm run build:server
 
 FROM node:20-alpine AS runtime
+ARG BUILD_REVISION=dev
+ARG BUILD_TIME=unknown
+LABEL org.opencontainers.image.title="inventorius-frontend" \
+      org.opencontainers.image.source="https://github.com/computemachines/inventorius-frontend" \
+      org.opencontainers.image.revision=${BUILD_REVISION} \
+      org.opencontainers.image.created=${BUILD_TIME}
 ENV NODE_ENV=production
+ENV BUILD_REVISION=${BUILD_REVISION}
+ENV BUILD_TIME=${BUILD_TIME}
 ENV API_HOSTNAME=http://api:8000
 WORKDIR /app
 COPY --from=build /app/dist /app/dist
