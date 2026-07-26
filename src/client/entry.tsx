@@ -44,6 +44,14 @@ function init_sentry() {
     environment: runtime.build.environment,
     sendDefaultPii: false,
     tracesSampleRate: 0,
+    beforeSend(event) {
+      delete event.request;
+      delete event.user;
+      delete event.contexts;
+      delete event.extra;
+      delete event.breadcrumbs;
+      return event;
+    },
     initialScope: {
       tags: {
         component: runtime.build.component,
