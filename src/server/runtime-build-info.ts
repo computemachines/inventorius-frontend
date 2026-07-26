@@ -6,10 +6,13 @@ type StaticBuildInfo = typeof staticBuildInfo;
 type ReadFile = (path: string, encoding: "utf8") => string;
 
 interface ReleaseManifest {
-  schema: 1;
-  component: "frontend";
-  revision: string;
+  schema_version: 1;
   product_release: string;
+  components: {
+    frontend: {
+      revision: string;
+    };
+  };
 }
 
 function isMatchingReleaseManifest(
@@ -19,11 +22,15 @@ function isMatchingReleaseManifest(
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const manifest = value as Record<string, unknown>;
   return (
-    manifest.schema === 1 &&
-    manifest.component === "frontend" &&
-    manifest.revision === revision &&
+    manifest.schema_version === 1 &&
     typeof manifest.product_release === "string" &&
-    manifest.product_release.trim().length > 0
+    manifest.product_release.trim().length > 0 &&
+    typeof manifest.components === "object" &&
+    manifest.components !== null &&
+    !Array.isArray(manifest.components) &&
+    typeof (manifest.components as Record<string, unknown>).frontend === "object" &&
+    (manifest.components as { frontend: { revision?: unknown } }).frontend !== null &&
+    (manifest.components as { frontend: { revision?: unknown } }).frontend.revision === revision
   );
 }
 

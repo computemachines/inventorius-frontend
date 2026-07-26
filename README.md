@@ -120,9 +120,10 @@ Runtime DSNs belong in the deployment environment, never in this repository or
 the image.
 
 The manifest is read for every `/build.json` and SSR response. It must have
-`schema: 1`, `component: "frontend"`, the image's full immutable `revision`,
-and a non-empty `product_release`. Missing, stale, or malformed manifests
-safely fall back to `PRODUCT_RELEASE` (then the component version).
+`schema_version: 1`, a non-empty `product_release`, and
+`components.frontend.revision` equal to the image's full immutable revision.
+Missing, stale, or malformed manifests safely fall back to `PRODUCT_RELEASE`
+(then the component version).
 
 ## Design System
 

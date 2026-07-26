@@ -22,10 +22,9 @@ function environ(path = "/release.json") {
 
 test("uses a matching schema-1 frontend release manifest", () => {
   const info = resolveRuntimeBuildInfo(build, environ(), () => JSON.stringify({
-    schema: 1,
-    component: "frontend",
-    revision: build.revision,
+    schema_version: 1,
     product_release: "2026.07.26-rc1",
+    components: { frontend: { revision: build.revision } },
   }));
   assert.equal(info.product_release, "2026.07.26-rc1");
   assert.equal(info.environment, "staging");
@@ -33,10 +32,19 @@ test("uses a matching schema-1 frontend release manifest", () => {
 
 test("uses the environment fallback for a stale release manifest", () => {
   const info = resolveRuntimeBuildInfo(build, environ(), () => JSON.stringify({
+    schema_version: 1,
+    product_release: "wrong-release",
+    components: { frontend: { revision: "stale" } },
+  }));
+  assert.equal(info.product_release, "fallback-release");
+});
+
+test("rejects the obsolete single-component manifest shape", () => {
+  const info = resolveRuntimeBuildInfo(build, environ(), () => JSON.stringify({
     schema: 1,
     component: "frontend",
-    revision: "stale",
-    product_release: "wrong-release",
+    revision: build.revision,
+    product_release: "obsolete-release",
   }));
   assert.equal(info.product_release, "fallback-release");
 });
