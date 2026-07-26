@@ -112,10 +112,11 @@ version, immutable Git revision, product release, runtime environment, and
 build time. No Sentry DSNs, credentials, request data, or source maps are
 served from the runtime image.
 
-The publish workflow needs these GitHub secrets only to upload private source
-maps: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_CLIENT_PROJECT`, and
-`SENTRY_SERVER_PROJECT`. It skips that upload when any is absent. Runtime DSNs
-belong in the deployment environment, never in this repository or the image.
+The publish workflow needs GitHub secret `SENTRY_AUTH_TOKEN` and repository
+variables `SENTRY_ORG`, `SENTRY_CLIENT_PROJECT`, and `SENTRY_SERVER_PROJECT`
+only to upload private source maps. It skips that upload when any is absent.
+Runtime DSNs belong in the deployment environment, never in this repository or
+the image.
 
 ## Design System
 

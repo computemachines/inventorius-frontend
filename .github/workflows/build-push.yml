@@ -90,13 +90,30 @@ jobs:
             type=raw,value=development,enable=${{ github.ref == 'refs/heads/development' }}
             type=raw,value=sha-${{ steps.build.outputs.revision }}
 
-      - name: Upload private source maps to Sentry
-        if: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_CLIENT_PROJECT != '' && secrets.SENTRY_SERVER_PROJECT != '' }}
+      - name: Detect configured Sentry release credentials
+        id: sentry
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_CLIENT_PROJECT: ${{ secrets.SENTRY_CLIENT_PROJECT }}
-          SENTRY_SERVER_PROJECT: ${{ secrets.SENTRY_SERVER_PROJECT }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_CLIENT_PROJECT: ${{ vars.SENTRY_CLIENT_PROJECT }}
+          SENTRY_SERVER_PROJECT: ${{ vars.SENTRY_SERVER_PROJECT }}
+        run: |
+          if [ -n "$SENTRY_AUTH_TOKEN" ] &&
+             [ -n "$SENTRY_ORG" ] &&
+             [ -n "$SENTRY_CLIENT_PROJECT" ] &&
+             [ -n "$SENTRY_SERVER_PROJECT" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload private source maps to Sentry
+        if: steps.sentry.outputs.configured == 'true'
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_CLIENT_PROJECT: ${{ vars.SENTRY_CLIENT_PROJECT }}
+          SENTRY_SERVER_PROJECT: ${{ vars.SENTRY_SERVER_PROJECT }}
           SENTRY_RELEASE: ${{ steps.build.outputs.release }}
           BUILD_REVISION: ${{ steps.build.outputs.revision }}
           BUILD_TIME: ${{ steps.build.outputs.created }}
