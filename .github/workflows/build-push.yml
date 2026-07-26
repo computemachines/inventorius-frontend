@@ -70,9 +70,11 @@ jobs:
       - name: Define immutable build metadata
         id: build
         run: |
-          echo "revision=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-          echo "release=inventorius-frontend@${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-          echo "created=$(date --utc +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+          {
+            echo "revision=${GITHUB_SHA}"
+            echo "release=inventorius-frontend@${GITHUB_SHA}"
+            echo "created=$(date --utc +'%Y-%m-%dT%H:%M:%SZ')"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -118,6 +120,7 @@ jobs:
           BUILD_REVISION: ${{ steps.build.outputs.revision }}
           BUILD_TIME: ${{ steps.build.outputs.created }}
           SOURCE_MAPS: "true"
+          CLIENT_URL_PREFIX: ~/assets
         run: |
           npm ci
           npm run build:client
@@ -125,7 +128,7 @@ jobs:
           npx sentry-cli releases -p "$SENTRY_CLIENT_PROJECT" new "$SENTRY_RELEASE" || true
           npx sentry-cli releases -p "$SENTRY_SERVER_PROJECT" new "$SENTRY_RELEASE" || true
           npx sentry-cli releases -p "$SENTRY_CLIENT_PROJECT" files "$SENTRY_RELEASE" upload-sourcemaps \
-            --url-prefix '~/assets' --validate dist/assets
+            --url-prefix "$CLIENT_URL_PREFIX" --validate dist/assets
           npx sentry-cli releases -p "$SENTRY_SERVER_PROJECT" files "$SENTRY_RELEASE" upload-sourcemaps \
             --url-prefix 'app:///' --validate dist/server.bundle.js dist/server.bundle.js.map
           npx sentry-cli releases -p "$SENTRY_CLIENT_PROJECT" finalize "$SENTRY_RELEASE"
