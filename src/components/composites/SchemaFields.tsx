@@ -8,7 +8,7 @@
 
 import * as React from "react";
 import { useContext, useState, useEffect, useCallback } from "react";
-import { ApiContext } from "../../api-client/api-client";
+import { ApiContext, FileUploadState } from "../../api-client/api-client";
 import { AttributeBundle } from "../../api-client/data-models";
 import { SchemaField } from "../../hooks/useSchemaForm";
 import { AsyncTypeaheadField } from "./Typeahead";
@@ -110,16 +110,10 @@ const UnitRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => (
   </div>
 );
 
-interface FileMetadata {
-  id: string;
-  filename: string;
-  content_type: string;
-  size: number;
-  is_image: boolean;
-  thumbnail_url?: string;
-}
+type FileMetadata = FileUploadState;
 
 const FileRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => {
+  const api = useContext(ApiContext);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<FileMetadata | null>(null);
@@ -159,24 +153,8 @@ const FileRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => {
       setUploading(true);
       setError(null);
 
-      const formData = new FormData();
-      formData.append("file", file);
-
       try {
-        const response = await fetch("/api/files", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(
-            errData["invalid-params"]?.[0]?.reason || "Upload failed"
-          );
-        }
-
-        const data = await response.json();
-        const fileState = data.state as FileMetadata;
+        const { state: fileState } = await api.uploadFile(file);
 
         onChange(fileState.id);
         setPreview(fileState);
@@ -186,7 +164,7 @@ const FileRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => {
         setUploading(false);
       }
     },
-    [onChange]
+    [api, onChange]
   );
 
   const handleRemove = useCallback(() => {

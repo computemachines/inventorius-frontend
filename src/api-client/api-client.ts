@@ -53,6 +53,20 @@ export interface FrontloadContext {
   api: ApiClient;
 }
 
+export interface FileUploadState {
+  id: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  is_image: boolean;
+  thumbnail_url?: string;
+}
+
+export interface FileUploadResult {
+  Id: string;
+  state: FileUploadState;
+}
+
 /**
  * Inventorius API client
  */
@@ -770,6 +784,35 @@ export class ApiClient {
       throw new Error((err as { error?: string; message?: string }).error ||
                       (err as { message?: string }).message ||
                       "Request failed");
+    }
+    return resp.json();
+  }
+
+  /**
+   * Upload a schema attachment through the same authenticated transport as
+   * every other unsafe request. Do not set Content-Type: the browser supplies
+   * the multipart boundary for FormData.
+   */
+  async uploadFile(file: File): Promise<FileUploadResult> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const resp = await this._fetch(`${this.hostname}/api/files`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!resp.ok) {
+      const problem = await resp.json().catch(() => ({})) as {
+        detail?: string;
+        title?: string;
+        "invalid-params"?: Array<{ reason?: string }>;
+      };
+      throw new Error(
+        problem["invalid-params"]?.[0]?.reason ||
+        problem.detail ||
+        problem.title ||
+        "Upload failed"
+      );
     }
     return resp.json();
   }
