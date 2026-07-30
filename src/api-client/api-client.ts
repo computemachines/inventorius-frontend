@@ -44,6 +44,7 @@ import type {
   AuthProblem,
   ApplicationRootResource,
   AuthSessionResource,
+  AuthSessionsResource,
   AuthVerificationResult,
   PasskeyCeremony,
   PasskeyCredentialJSON,
@@ -75,7 +76,6 @@ export class ApiClient {
   private cookie?: string;
   private csrfToken?: string;
 
-
   constructor(hostname = "", options: { cookie?: string } = {}) {
     this.hostname = hostname;
     this.cookie = options.cookie;
@@ -103,35 +103,39 @@ export class ApiClient {
         headers,
         credentials: this.hostname ? undefined : "same-origin",
       });
-      console.log(`[api] ${method} ${url} → ${resp.status} (${Date.now() - start}ms)`);
+      console.log(
+        `[api] ${method} ${url} → ${resp.status} (${Date.now() - start}ms)`,
+      );
       return resp;
     } catch (err) {
-      console.error(`[api] ${method} ${url} → FETCH ERROR (${Date.now() - start}ms)`, err);
+      console.error(
+        `[api] ${method} ${url} → FETCH ERROR (${Date.now() - start}ms)`,
+        err,
+      );
       throw err;
     }
   }
-
 
   hydrate<T extends Sku | Batch | ProcessDefinition>(server_rendered: T): T {
     if (Object.getPrototypeOf(server_rendered) !== Object.prototype)
       return server_rendered;
     switch (server_rendered.kind) {
-    case "sku":
-      Object.setPrototypeOf(server_rendered, Sku.prototype);
-      break;
-    case "batch":
-      Object.setPrototypeOf(server_rendered, Batch.prototype);
-      break;
-    case "process-definition":
-      Object.setPrototypeOf(server_rendered, ProcessDefinition.prototype);
-      break;
-    default:
+      case "sku":
+        Object.setPrototypeOf(server_rendered, Sku.prototype);
+        break;
+      case "batch":
+        Object.setPrototypeOf(server_rendered, Batch.prototype);
+        break;
+      case "process-definition":
+        Object.setPrototypeOf(server_rendered, ProcessDefinition.prototype);
+        break;
+      default:
         let _exhaustive_check: never; // eslint-disable-line
     }
     for (const key in server_rendered.operations) {
       Object.setPrototypeOf(
         server_rendered.operations[key],
-        CallableRestOperation.prototype
+        CallableRestOperation.prototype,
       );
       server_rendered.operations[key].hostname = this.hostname;
       server_rendered.operations[key].bindTransport(this._fetch.bind(this));
@@ -139,17 +143,16 @@ export class ApiClient {
     return server_rendered;
   }
 
-
   async getStatus(): Promise<ApiStatus> {
     const resp = await this._fetch(`${this.hostname}/api/status`);
-    if (!resp.ok) throw Error(`${this.hostname}/api/status returned error code`);
+    if (!resp.ok)
+      throw Error(`${this.hostname}/api/status returned error code`);
     return new ApiStatus({
-      ...await resp.json(),
+      ...(await resp.json()),
       hostname: this.hostname,
       transport: this._fetch.bind(this),
     });
   }
-
 
   async getStats(): Promise<Stats> {
     const resp = await this._fetch(`${this.hostname}/api/stats`);
@@ -157,7 +160,6 @@ export class ApiClient {
     const json = await resp.json();
     return { ...json, kind: "stats" };
   }
-
 
   /**
    * Intake either captures an unknown item or receives a deliberately chosen
@@ -180,11 +182,11 @@ export class ApiClient {
     return { ...json, kind: "problem" };
   }
 
-
   async getNextBin(): Promise<NextBin> {
     const resp = await this._fetch(`${this.hostname}/api/next/bin`);
     const json = await resp.json();
-    if (!resp.ok) throw Error(`${this.hostname}/api/next/bin returned error status`);
+    if (!resp.ok)
+      throw Error(`${this.hostname}/api/next/bin returned error status`);
     return new NextBin({
       ...json,
       hostname: this.hostname,
@@ -192,21 +194,19 @@ export class ApiClient {
     });
   }
 
-
   async getSearchResults(params: {
     query: string;
     limit?: string;
     startingFrom?: string;
   }): Promise<SearchResults | Problem> {
     const resp = await this._fetch(
-      `${this.hostname}/api/search?${new URLSearchParams(params).toString()}`
+      `${this.hostname}/api/search?${new URLSearchParams(params).toString()}`,
     );
     const json = await resp.json();
 
     if (resp.ok) return new SearchResults({ ...json });
     else return { ...json, kind: "problem" };
   }
-
 
   async getBin(id: string): Promise<Bin | Problem> {
     const resp = await this._fetch(`${this.hostname}/api/bin/${id}`);
@@ -218,10 +218,8 @@ export class ApiClient {
         hostname: this.hostname,
         transport: this._fetch.bind(this),
       });
-    }
-    else return { ...json, kind: "problem" };
+    } else return { ...json, kind: "problem" };
   }
-
 
   async createBin(
     { id, props }: { id?: string; props?: unknown },
@@ -243,7 +241,6 @@ export class ApiClient {
     }
   }
 
-
   async getSku(id: string): Promise<Sku | Problem> {
     const resp = await this._fetch(`${this.hostname}/api/sku/${id}`);
     const json = await resp.json();
@@ -253,10 +250,8 @@ export class ApiClient {
         hostname: this.hostname,
         transport: this._fetch.bind(this),
       });
-    }
-    else return { ...json, kind: "problem" };
+    } else return { ...json, kind: "problem" };
   }
-
 
   async createSku(
     params: SkuCreationRequest,
@@ -278,7 +273,6 @@ export class ApiClient {
     }
   }
 
-
   async getBatch(batch_id: string): Promise<Batch | Problem> {
     const resp = await this._fetch(`${this.hostname}/api/batch/${batch_id}`);
     const json = await resp.json();
@@ -288,10 +282,8 @@ export class ApiClient {
         hostname: this.hostname,
         transport: this._fetch.bind(this),
       });
-    }
-    else return { ...json, kind: "problem" };
+    } else return { ...json, kind: "problem" };
   }
-
 
   async createBatch(
     params: BatchCreationRequest,
@@ -313,19 +305,21 @@ export class ApiClient {
     }
   }
 
-
   async postInventoryOperation(
     command: InventoryOperationCommand,
     idempotencyKey: string,
   ): Promise<InventoryOperationResult | Problem> {
-    const resp = await this._fetch(`${this.hostname}/api/inventory-operations`, {
-      method: "POST",
-      body: JSON.stringify(command),
-      headers: {
-        "Content-Type": "application/json",
-        "Idempotency-Key": idempotencyKey,
+    const resp = await this._fetch(
+      `${this.hostname}/api/inventory-operations`,
+      {
+        method: "POST",
+        body: JSON.stringify(command),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
       },
-    });
+    );
     const json = await resp.json();
     if (resp.ok) return { ...json, kind: "status" };
     return { ...json, kind: "problem" };
@@ -333,7 +327,14 @@ export class ApiClient {
 
   async getAuthSession(): Promise<AuthSessionResource> {
     const response = await this._fetch(`${this.hostname}/api/auth/session`);
-    if (!response.ok) throw new Error("Unable to read the authentication session.");
+    if (!response.ok)
+      throw new Error("Unable to read the authentication session.");
+    return response.json();
+  }
+
+  async getAuthSessions(): Promise<AuthSessionsResource> {
+    const response = await this._fetch(`${this.hostname}/api/auth/sessions`);
+    if (!response.ok) throw new Error("Unable to read active sessions.");
     return response.json();
   }
 
@@ -344,7 +345,7 @@ export class ApiClient {
   }
 
   async startBootstrapRegistration(
-    bootstrapToken: string
+    bootstrapToken: string,
   ): Promise<PasskeyCeremony | AuthProblem> {
     const response = await this._fetch(
       `${this.hostname}/api/auth/bootstrap/registration/options`,
@@ -352,14 +353,14 @@ export class ApiClient {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bootstrap_token: bootstrapToken }),
-      }
+      },
     );
     const json = await response.json();
     return response.ok ? json : { ...json, kind: "problem" };
   }
 
   async startRecoveryRegistration(
-    recoveryCode: string
+    recoveryCode: string,
   ): Promise<PasskeyCeremony | AuthProblem> {
     const response = await this._fetch(
       `${this.hostname}/api/auth/bootstrap/registration/options`,
@@ -367,21 +368,22 @@ export class ApiClient {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ recovery_code: recoveryCode }),
-      }
+      },
     );
     const json = await response.json();
     return response.ok ? json : { ...json, kind: "problem" };
   }
 
-  async startAdditionalPasskeyRegistration():
-    Promise<PasskeyCeremony | AuthProblem> {
+  async startAdditionalPasskeyRegistration(): Promise<
+    PasskeyCeremony | AuthProblem
+  > {
     const response = await this._fetch(
       `${this.hostname}/api/auth/bootstrap/registration/options`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
-      }
+      },
     );
     const json = await response.json();
     return response.ok ? json : { ...json, kind: "problem" };
@@ -389,10 +391,13 @@ export class ApiClient {
 
   async finishBootstrapRegistration(
     ceremony: PasskeyCeremony,
-    credential: PasskeyCredentialJSON
+    credential: PasskeyCredentialJSON,
   ): Promise<AuthVerificationResult | AuthProblem> {
-    const verify = ceremony.operations.find((operation) => operation.rel === "verify");
-    if (!verify) throw new Error("Registration ceremony has no verification operation.");
+    const verify = ceremony.operations.find(
+      (operation) => operation.rel === "verify",
+    );
+    if (!verify)
+      throw new Error("Registration ceremony has no verification operation.");
     const response = await this._fetch(`${this.hostname}${verify.href}`, {
       method: verify.method,
       headers: { "Content-Type": "application/json" },
@@ -408,15 +413,40 @@ export class ApiClient {
   async startPasskeyAuthentication(): Promise<PasskeyCeremony | AuthProblem> {
     const response = await this._fetch(
       `${this.hostname}/api/auth/passkeys/authentication/options`,
-      { method: "POST" }
+      { method: "POST" },
     );
     const json = await response.json();
     return response.ok ? json : { ...json, kind: "problem" };
   }
 
+  async startRecentPasskeyAuthentication(): Promise<
+    PasskeyCeremony | AuthProblem
+  > {
+    const response = await this._fetch(
+      `${this.hostname}/api/auth/passkeys/recent-authentication/options`,
+      { method: "POST" },
+    );
+    const json = await response.json();
+    return response.ok ? json : { ...json, kind: "problem" };
+  }
+
+  async logoutAllSessions(): Promise<void> {
+    const response = await this._fetch(
+      `${this.hostname}/api/auth/logout-all-sessions`,
+      {
+        method: "POST",
+      },
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.title || "Unable to sign out every session.");
+    }
+    this.csrfToken = undefined;
+  }
+
   async localLogin(
     operation: RestOperation,
-    token: string
+    token: string,
   ): Promise<AuthVerificationResult | AuthProblem> {
     const response = await this._fetch(`${this.hostname}${operation.href}`, {
       method: operation.method,
@@ -429,10 +459,13 @@ export class ApiClient {
 
   async finishPasskeyAuthentication(
     ceremony: PasskeyCeremony,
-    credential: PasskeyCredentialJSON
+    credential: PasskeyCredentialJSON,
   ): Promise<AuthVerificationResult | AuthProblem> {
-    const verify = ceremony.operations.find((operation) => operation.rel === "verify");
-    if (!verify) throw new Error("Authentication ceremony has no verification operation.");
+    const verify = ceremony.operations.find(
+      (operation) => operation.rel === "verify",
+    );
+    if (!verify)
+      throw new Error("Authentication ceremony has no verification operation.");
     const response = await this._fetch(`${this.hostname}${verify.href}`, {
       method: verify.method,
       headers: { "Content-Type": "application/json" },
@@ -467,7 +500,6 @@ export class ApiClient {
     return { ...json, kind: "problem" };
   }
 
-
   async getInventoryOperation(
     operationId: string,
   ): Promise<InventoryOperationReceiptResult | Problem> {
@@ -480,7 +512,6 @@ export class ApiClient {
     }
     return { ...json, kind: "problem" };
   }
-
 
   async correctInventoryOperation(
     operationId: string,
@@ -506,7 +537,6 @@ export class ApiClient {
     return { ...json, kind: "problem" };
   }
 
-
   /** Backwards-compatible name for Quick Capture callers. */
   async quickCapture(
     params: Extract<IntakeRequest, { description: string }>,
@@ -517,7 +547,6 @@ export class ApiClient {
     // to allocate a SKU, and therefore has the CaptureResult response shape.
     return response.kind === "problem" ? response : (response as CaptureResult);
   }
-
 
   async getInventoryCandidates({
     evidence,
@@ -542,7 +571,6 @@ export class ApiClient {
     if (resp.ok) return { ...json, kind: "inventory-candidates" };
     return { ...json, kind: "problem" };
   }
-
 
   async getAuditSnapshot(
     locationId: string,
@@ -613,7 +641,7 @@ export class ApiClient {
     entityType: "sku" | "batch",
     fieldName: string,
     query: string,
-    context: BundleContext
+    context: BundleContext,
   ): Promise<BundleLookupResult> {
     const params = new URLSearchParams({
       field: fieldName,
@@ -625,7 +653,7 @@ export class ApiClient {
     }
 
     const resp = await this._fetch(
-      `${this.hostname}/api/schema/${entityType}/search?${params.toString()}`
+      `${this.hostname}/api/schema/${entityType}/search?${params.toString()}`,
     );
 
     if (!resp.ok) {
@@ -660,7 +688,7 @@ export class ApiClient {
     entityType: "sku" | "batch",
     fieldName: string,
     value: string,
-    context: BundleContext
+    context: BundleContext,
   ): Promise<BundleLookupResult> {
     const params = new URLSearchParams({
       field: fieldName,
@@ -672,7 +700,7 @@ export class ApiClient {
     }
 
     const resp = await this._fetch(
-      `${this.hostname}/api/schema/${entityType}/search?${params.toString()}`
+      `${this.hostname}/api/schema/${entityType}/search?${params.toString()}`,
     );
 
     if (!resp.ok) {
@@ -714,29 +742,27 @@ export class ApiClient {
     };
   }
 
-
   async listProcessDefinitions(
-    query = ""
+    query = "",
   ): Promise<ProcessDefinitionState[] | Problem> {
     const params = query ? `?${new URLSearchParams({ query }).toString()}` : "";
     const resp = await this._fetch(
-      `${this.hostname}/api/process-definitions${params}`
+      `${this.hostname}/api/process-definitions${params}`,
     );
     const json = await resp.json();
     if (resp.ok) return json.state;
     return { ...json, kind: "problem" };
   }
 
-
   async getProcessDefinition(
     id: string,
-    revision?: number
+    revision?: number,
   ): Promise<ProcessDefinition | Problem> {
     const params = revision
       ? `?${new URLSearchParams({ revision: String(revision) }).toString()}`
       : "";
     const resp = await this._fetch(
-      `${this.hostname}/api/process-definition/${id}${params}`
+      `${this.hostname}/api/process-definition/${id}${params}`,
     );
     const json = await resp.json();
     if (resp.ok) {
@@ -749,9 +775,8 @@ export class ApiClient {
     return { ...json, kind: "problem" };
   }
 
-
   async createProcessDefinition(
-    definition: ProcessDefinitionWrite
+    definition: ProcessDefinitionWrite,
   ): Promise<Status | Problem> {
     const resp = await this._fetch(`${this.hostname}/api/process-definitions`, {
       method: "POST",
@@ -770,7 +795,11 @@ export class ApiClient {
   /**
    * Generic fetch wrapper with JSON support
    */
-  async request<T>(path: string, method: string = "GET", body?: unknown): Promise<T> {
+  async request<T>(
+    path: string,
+    method: string = "GET",
+    body?: unknown,
+  ): Promise<T> {
     const options: RequestInit = {
       method,
       headers: { "Content-Type": "application/json" },
@@ -781,9 +810,11 @@ export class ApiClient {
     const resp = await this._fetch(`${this.hostname}${path}`, options);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ error: resp.statusText }));
-      throw new Error((err as { error?: string; message?: string }).error ||
-                      (err as { message?: string }).message ||
-                      "Request failed");
+      throw new Error(
+        (err as { error?: string; message?: string }).error ||
+          (err as { message?: string }).message ||
+          "Request failed",
+      );
     }
     return resp.json();
   }
@@ -802,16 +833,16 @@ export class ApiClient {
       body: formData,
     });
     if (!resp.ok) {
-      const problem = await resp.json().catch(() => ({})) as {
+      const problem = (await resp.json().catch(() => ({}))) as {
         detail?: string;
         title?: string;
         "invalid-params"?: Array<{ reason?: string }>;
       };
       throw new Error(
         problem["invalid-params"]?.[0]?.reason ||
-        problem.detail ||
-        problem.title ||
-        "Upload failed"
+          problem.detail ||
+          problem.title ||
+          "Upload failed",
       );
     }
     return resp.json();
@@ -849,7 +880,7 @@ export class ApiClient {
   async evaluateSchema(
     schemaName: string,
     activeMixins: string[],
-    fieldValues: Record<string, string | boolean>
+    fieldValues: Record<string, string | boolean>,
   ): Promise<{ active_mixins: string[]; available_fields: unknown[] }> {
     return this.request(`/api/schema/${schemaName}/evaluate`, "POST", {
       active_mixins: activeMixins,
@@ -860,15 +891,26 @@ export class ApiClient {
   /**
    * Save a mixin in a schema
    */
-  async saveMixin(schemaName: string, mixinName: string, mixin: unknown): Promise<void> {
-    await this.request(`/api/schema/${schemaName}/mixin/${mixinName}`, "PUT", mixin);
+  async saveMixin(
+    schemaName: string,
+    mixinName: string,
+    mixin: unknown,
+  ): Promise<void> {
+    await this.request(
+      `/api/schema/${schemaName}/mixin/${mixinName}`,
+      "PUT",
+      mixin,
+    );
   }
 
   /**
    * Delete a mixin from a schema
    */
   async deleteMixin(schemaName: string, mixinName: string): Promise<void> {
-    await this.request(`/api/schema/${schemaName}/mixin/${mixinName}`, "DELETE");
+    await this.request(
+      `/api/schema/${schemaName}/mixin/${mixinName}`,
+      "DELETE",
+    );
   }
 
   /**

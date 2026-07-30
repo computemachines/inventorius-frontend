@@ -52,6 +52,22 @@ export type AuthVerificationResult = AuthSessionResource & {
   recovery_codes?: string[];
 };
 
+export type AuthSessionInventoryItem = {
+  current: boolean;
+  created_at: string;
+  last_seen_at?: string;
+  idle_expires_at?: string;
+  expires_at: string;
+  authentication_method: string;
+};
+
+export type AuthSessionsResource = {
+  kind: "auth-sessions";
+  Id: "/api/auth/sessions";
+  state: { sessions: AuthSessionInventoryItem[] };
+  operations: RestOperation[];
+};
+
 export type AuthProblem = {
   kind: "problem";
   type: string;
