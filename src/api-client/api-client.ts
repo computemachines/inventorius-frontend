@@ -39,6 +39,7 @@ import {
   ResourceCreationResult,
   ResourceCreationProblem,
   RestOperation,
+  decodeRestOperation,
 } from "./data-models";
 import type {
   AuthProblem,
@@ -85,6 +86,14 @@ export class ApiClient {
     this.csrfToken = token;
   }
 
+  hydrateOperation(operation: RestOperation): CallableRestOperation {
+    return new CallableRestOperation({
+      ...decodeRestOperation(operation),
+      hostname: this.hostname,
+      transport: this._fetch.bind(this),
+    });
+  }
+
   private async _fetch(url: string, options?: RequestInit): Promise<Response> {
     const method = options?.method ?? "GET";
     const headers = new Headers(options?.headers);
@@ -117,30 +126,28 @@ export class ApiClient {
   }
 
   hydrate<T extends Sku | Batch | ProcessDefinition>(server_rendered: T): T {
-    if (Object.getPrototypeOf(server_rendered) !== Object.prototype)
-      return server_rendered;
     switch (server_rendered.kind) {
       case "sku":
-        Object.setPrototypeOf(server_rendered, Sku.prototype);
-        break;
+        return new Sku({
+          ...server_rendered,
+          hostname: this.hostname,
+          transport: this._fetch.bind(this),
+        }) as T;
       case "batch":
-        Object.setPrototypeOf(server_rendered, Batch.prototype);
-        break;
+        return new Batch({
+          ...server_rendered,
+          hostname: this.hostname,
+          transport: this._fetch.bind(this),
+        }) as T;
       case "process-definition":
-        Object.setPrototypeOf(server_rendered, ProcessDefinition.prototype);
-        break;
+        return new ProcessDefinition({
+          ...server_rendered,
+          hostname: this.hostname,
+          transport: this._fetch.bind(this),
+        }) as T;
       default:
-        let _exhaustive_check: never; // eslint-disable-line
+        throw new TypeError("Cannot hydrate an unrecognized resource.");
     }
-    for (const key in server_rendered.operations) {
-      Object.setPrototypeOf(
-        server_rendered.operations[key],
-        CallableRestOperation.prototype,
-      );
-      server_rendered.operations[key].hostname = this.hostname;
-      server_rendered.operations[key].bindTransport(this._fetch.bind(this));
-    }
-    return server_rendered;
   }
 
   async getStatus(): Promise<ApiStatus> {
@@ -286,16 +293,13 @@ export class ApiClient {
   }
 
   async createBatch(
+    operation: CallableRestOperation,
     params: BatchCreationRequest,
     idempotencyKey: string,
   ): Promise<ResourceCreationResult | ResourceCreationProblem> {
-    const resp = await this._fetch(`${this.hostname}/api/batches`, {
-      method: "POST",
-      body: JSON.stringify(params),
-      headers: {
-        "Content-Type": "application/json",
-        "Idempotency-Key": idempotencyKey,
-      },
+    const resp = await operation.perform({
+      json: params,
+      idempotencyKey,
     });
     const json = await resp.json();
     if (resp.ok) {
@@ -341,7 +345,13 @@ export class ApiClient {
   async getApplicationRoot(): Promise<ApplicationRootResource> {
     const response = await this._fetch(`${this.hostname}/api/`);
     if (!response.ok) throw new Error("Unable to read the application root.");
-    return response.json();
+    const resource = (await response.json()) as ApplicationRootResource;
+    return {
+      ...resource,
+      operations: resource.operations.map((operation) =>
+        this.hydrateOperation(operation),
+      ),
+    };
   }
 
   async startBootstrapRegistration(

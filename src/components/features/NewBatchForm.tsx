@@ -9,7 +9,11 @@ import { useLocation } from "react-router-dom";
 import { parse } from "query-string";
 
 import { ApiContext, FrontloadContext } from "../../api-client/api-client";
-import { BatchCreationRequest } from "../../api-client/data-models";
+import {
+  BatchCreationRequest,
+  batchCreateAffordanceProblem,
+  isBatchCreateOperation,
+} from "../../api-client/data-models";
 import { ToastContext } from "../primitives/Toast";
 import { useSchemaForm } from "../../hooks/useSchemaForm";
 import ItemLabel from "../primitives/ItemLabel";
@@ -26,6 +30,7 @@ import {
   inputClasses,
 } from "../composites/SchemaFields";
 import { usePendingNewBatchCommand } from "./pending-resource-creation";
+import { useAuth } from "../auth/AuthContext";
 
 function isDefinitiveRejection(httpStatus: number, type: string): boolean {
   return (
@@ -56,6 +61,9 @@ export function NewBatchForm() {
   );
 
   const api = useContext(ApiContext);
+  const { applicationOperation } = useAuth();
+  const createBatchOperation = applicationOperation("create-batch");
+  const affordanceProblem = batchCreateAffordanceProblem(createBatchOperation);
   const { setToastContent } = useContext(ToastContext);
   const pendingCommand = usePendingNewBatchCommand();
   const restoredCommandHandledRef = useRef(false);
@@ -168,6 +176,13 @@ export function NewBatchForm() {
     event.preventDefault();
     setValidationError("");
 
+    if (affordanceProblem || !isBatchCreateOperation(createBatchOperation)) {
+      setValidationError(
+        affordanceProblem ?? "Batch creation is currently unavailable.",
+      );
+      return;
+    }
+
     const command =
       pendingCommand.pending ?? pendingCommand.getOrCreate(buildPayload());
     if (!command) {
@@ -180,7 +195,11 @@ export function NewBatchForm() {
     const submissionGeneration = ++submissionGenerationRef.current;
     setSubmitting(true);
     try {
-      const response = await api.createBatch(command.payload, command.key);
+      const response = await api.createBatch(
+        createBatchOperation,
+        command.payload,
+        command.key,
+      );
       if (
         !mountedRef.current ||
         submissionGenerationRef.current !== submissionGeneration
@@ -289,7 +308,11 @@ export function NewBatchForm() {
         <button
           type="submit"
           className="form-submit"
-          disabled={submitting || !pendingCommand.storageAvailable}
+          disabled={
+            submitting ||
+            !pendingCommand.storageAvailable ||
+            affordanceProblem !== null
+          }
         >
           {submitting ? "Recovering batch…" : "Recover the same batch"}
         </button>
@@ -426,7 +449,11 @@ export function NewBatchForm() {
         </div>
       </fieldset>
 
-      {!pendingCommand.storageAvailable && pendingCommand.ready ? (
+      {affordanceProblem ? (
+        <p className="form-validation-error" role="alert">
+          {affordanceProblem}
+        </p>
+      ) : !pendingCommand.storageAvailable && pendingCommand.ready ? (
         <p className="form-validation-error" role="alert">
           Session storage is unavailable, so retry-safe batch creation is
           disabled.
@@ -442,6 +469,7 @@ export function NewBatchForm() {
         className="form-submit w-full"
         disabled={
           submitting ||
+          affordanceProblem !== null ||
           !pendingCommand.ready ||
           !pendingCommand.storageAvailable
         }

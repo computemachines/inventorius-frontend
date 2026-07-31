@@ -11,6 +11,7 @@ type AuthContextValue = {
   session: AuthSessionResource | null;
   pending: boolean;
   hasOperation: (rel: string) => boolean;
+  applicationOperation: (rel: string) => RestOperation | undefined;
   hasAuthOperation: (rel: string) => boolean;
   authOperation: (rel: string) => RestOperation | undefined;
 };
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextValue>({
   session: null,
   pending: true,
   hasOperation: () => false,
+  applicationOperation: () => undefined,
   hasAuthOperation: () => false,
   authOperation: () => undefined,
 });
@@ -41,6 +43,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     api.setCsrfToken(session?.state.csrf_token);
   }, [api, session?.state.csrf_token]);
 
+  const applicationOperation = (rel: string) => {
+    const operation = data?.application?.operations.find(
+      (candidate) => candidate.rel === rel,
+    );
+    return operation ? api.hydrateOperation(operation) : undefined;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -50,6 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           data?.application?.operations.some(
             (operation) => operation.rel === rel
           ) ?? false,
+        applicationOperation,
         hasAuthOperation: (rel) =>
           session?.operations.some((operation) => operation.rel === rel) ?? false,
         authOperation: (rel) =>

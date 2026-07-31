@@ -499,35 +499,183 @@ export interface AuditReconciliationRequest {
 }
 
 class RestEndpoint {
+  Id?: string;
   state: unknown;
   operations: Record<string, CallableRestOperation>;
-  constructor({
-    state,
-    operations,
-    hostname,
-    transport,
-  }: {
+  constructor(config: {
     state: unknown;
-    operations: RestOperation[];
+    operations: RestOperation[] | Record<string, RestOperation>;
     hostname: string;
     transport?: OperationTransport;
-  }) {
+  } & Record<string, unknown>) {
+    const { state, operations, hostname, transport, ...envelope } = config;
+    Object.assign(this, envelope);
     this.state = state;
     this.operations = {};
-    for (const op of operations) {
-      this.operations[op.rel] = new CallableRestOperation({
+    for (const op of Object.values(operations)) {
+      const decoded = decodeRestOperation(op);
+      this.operations[decoded.rel] = new CallableRestOperation({
+        ...decoded,
         hostname,
         transport,
-        ...op,
       });
     }
   }
 }
 
+export type OperationMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+export interface OperationSchemaIdentity {
+  name: string;
+  version: number;
+}
+
+export type OperationIdempotency =
+  | {
+      mode: "required";
+      key: {
+        in: "header";
+        name: "Idempotency-Key";
+        max_length: number;
+      };
+      scope: "resource-creation";
+      replay: "return-committed-result";
+      mismatch: "conflict";
+    }
+  | { mode: "not-supported" }
+  | { mode: "not-applicable" };
+
 export interface RestOperation {
   rel: string;
   href: string;
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  method: OperationMethod;
+  "Expects-a"?: string;
+  kind?: string;
+  request_schema?: OperationSchemaIdentity | null;
+  response_schema?: OperationSchemaIdentity;
+  idempotency?: OperationIdempotency;
+}
+
+export interface TypedRestOperation extends RestOperation {
+  kind: string;
+  request_schema: OperationSchemaIdentity | null;
+  response_schema: OperationSchemaIdentity;
+  idempotency: OperationIdempotency;
+}
+
+function record(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${label} must be an object.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function nonemptyString(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new TypeError(`${label} must be a non-empty string.`);
+  }
+  return value;
+}
+
+function decodeSchema(value: unknown, label: string): OperationSchemaIdentity {
+  const input = record(value, label);
+  const version = input.version;
+  if (!Number.isInteger(version) || (version as number) < 1) {
+    throw new TypeError(`${label}.version must be a positive integer.`);
+  }
+  return {
+    ...input,
+    name: nonemptyString(input.name, `${label}.name`),
+    version: version as number,
+  } as OperationSchemaIdentity;
+}
+
+function decodeIdempotency(value: unknown): OperationIdempotency {
+  const input = record(value, "operation.idempotency");
+  const mode = input.mode;
+  if (mode === "not-supported" || mode === "not-applicable") {
+    return { ...input, mode } as OperationIdempotency;
+  }
+  if (mode !== "required") {
+    throw new TypeError("operation.idempotency.mode is not recognized.");
+  }
+  const key = record(input.key, "operation.idempotency.key");
+  if (
+    key.in !== "header" ||
+    key.name !== "Idempotency-Key" ||
+    !Number.isInteger(key.max_length) ||
+    (key.max_length as number) < 1 ||
+    input.scope !== "resource-creation" ||
+    input.replay !== "return-committed-result" ||
+    input.mismatch !== "conflict"
+  ) {
+    throw new TypeError("operation.idempotency required-command metadata is invalid.");
+  }
+  return {
+    ...input,
+    mode,
+    key: {
+      ...key,
+      in: "header",
+      name: "Idempotency-Key",
+      max_length: key.max_length as number,
+    },
+    scope: "resource-creation",
+    replay: "return-committed-result",
+    mismatch: "conflict",
+  } as OperationIdempotency;
+}
+
+/**
+ * Decode the wire boundary without pretending a partially typed descriptor is
+ * legacy. Older rel/method/href descriptors remain valid unchanged.
+ */
+export function decodeRestOperation(value: unknown): RestOperation {
+  const input = record(value, "operation");
+  const method = input.method;
+  if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(String(method))) {
+    throw new TypeError("operation.method is not recognized.");
+  }
+  if (input["Expects-a"] !== undefined && typeof input["Expects-a"] !== "string") {
+    throw new TypeError("operation.Expects-a must be a string.");
+  }
+  const decoded: RestOperation = {
+    ...input,
+    rel: nonemptyString(input.rel, "operation.rel"),
+    href: nonemptyString(input.href, "operation.href"),
+    method: method as OperationMethod,
+  } as RestOperation;
+  const typedKeys = ["kind", "request_schema", "response_schema", "idempotency"];
+  const hasTypedField = typedKeys.some((key) =>
+    Object.prototype.hasOwnProperty.call(input, key),
+  );
+  if (!hasTypedField) return decoded;
+  if (
+    !typedKeys.every((key) => Object.prototype.hasOwnProperty.call(input, key))
+  ) {
+    throw new TypeError("Typed operations must provide every typed field.");
+  }
+  return {
+    ...decoded,
+    kind: nonemptyString(input.kind, "operation.kind"),
+    request_schema:
+      input.request_schema === null
+        ? null
+        : decodeSchema(input.request_schema, "operation.request_schema"),
+    response_schema: decodeSchema(input.response_schema, "operation.response_schema"),
+    idempotency: decodeIdempotency(input.idempotency),
+  };
+}
+
+export function isTypedRestOperation(
+  operation: RestOperation | undefined,
+): operation is TypedRestOperation {
+  return Boolean(
+    operation?.kind &&
+      operation.request_schema !== undefined &&
+      operation.response_schema &&
+      operation.idempotency,
+  );
 }
 
 export type OperationTransport = (
@@ -538,18 +686,23 @@ export type OperationTransport = (
 export class CallableRestOperation implements RestOperation {
   rel: string;
   href: string;
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  method: OperationMethod;
+  "Expects-a"?: string;
+  kind?: string;
+  request_schema?: OperationSchemaIdentity | null;
+  response_schema?: OperationSchemaIdentity;
+  idempotency?: OperationIdempotency;
   hostname: string;
   private transport?: OperationTransport;
   constructor(config: {
     rel: string;
     href: string;
-    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    method: OperationMethod;
     hostname: string;
     transport?: OperationTransport;
-  }) {
-    const { transport, ...wireConfig } = config;
-    Object.assign(this, wireConfig);
+  } & Partial<TypedRestOperation>) {
+    const { transport, hostname, ...wireConfig } = config;
+    Object.assign(this, decodeRestOperation(wireConfig), { hostname });
     this.bindTransport(transport);
   }
 
@@ -565,30 +718,70 @@ export class CallableRestOperation implements RestOperation {
   perform({
     body,
     json,
+    idempotencyKey,
   }: {
     body?: string;
     json?: unknown;
+    idempotencyKey?: string;
   } = {}): Promise<Response> {
     const request = this.transport ?? fetch;
-    if (body) {
-      return request(`${this.hostname}${this.href}`, {
-        method: this.method,
-        body,
-      });
-    } else if (json) {
-      return request(`${this.hostname}${this.href}`, {
-        method: this.method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(json),
-      });
-    } else {
-      return request(`${this.hostname}${this.href}`, {
-        method: this.method,
-      });
+    const headers = new Headers();
+    if (this.idempotency?.mode === "required") {
+      if (!idempotencyKey || idempotencyKey.length > this.idempotency.key.max_length) {
+        throw new TypeError(
+          `A non-empty ${this.idempotency.key.name} of at most ${this.idempotency.key.max_length} characters is required.`,
+        );
+      }
+      headers.set(this.idempotency.key.name, idempotencyKey);
+    } else if (this.idempotency === undefined && idempotencyKey !== undefined) {
+      headers.set("Idempotency-Key", idempotencyKey);
+    } else if (idempotencyKey !== undefined) {
+      throw new TypeError("This operation does not advertise idempotency-key support.");
     }
+    const options: RequestInit = { method: this.method, headers };
+    if (body !== undefined) options.body = body;
+    if (json !== undefined) {
+      headers.set("Content-Type", "application/json");
+      options.body = JSON.stringify(json);
+    }
+    return request(`${this.hostname}${this.href}`, options);
   }
+}
+
+export function isBatchCreateOperation(
+  operation: RestOperation | undefined,
+): operation is CallableRestOperation {
+  if (
+    !(operation instanceof CallableRestOperation) ||
+    operation.rel !== "create-batch" ||
+    operation.method !== "POST"
+  ) {
+    return false;
+  }
+  if (!isTypedRestOperation(operation)) return true;
+  return (
+    operation.kind === "catalog.batch.create" &&
+    operation.request_schema?.name === "inventorius.batch-create" &&
+    operation.request_schema.version === 1 &&
+    operation.response_schema.name === "inventorius.batch-creation-result" &&
+    operation.response_schema.version === 1 &&
+    operation.idempotency.mode === "required" &&
+    operation.idempotency.key.in === "header" &&
+    operation.idempotency.key.name === "Idempotency-Key" &&
+    operation.idempotency.key.max_length === 200 &&
+    operation.idempotency.scope === "resource-creation" &&
+    operation.idempotency.replay === "return-committed-result" &&
+    operation.idempotency.mismatch === "conflict"
+  );
+}
+
+export function batchCreateAffordanceProblem(
+  operation: RestOperation | undefined,
+): string | null {
+  if (isBatchCreateOperation(operation)) return null;
+  return operation
+    ? "Batch creation is disabled because the server advertised an incompatible command contract."
+    : "Batch creation is disabled because the server did not advertise that command.";
 }
 
 export class ApiStatus extends RestEndpoint {
