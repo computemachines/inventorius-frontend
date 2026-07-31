@@ -44,6 +44,14 @@ jobs:
         run: |
           npm run build:client
           npm run build:server
+          if [ ! -s dist/assets/client.css ]; then
+            echo "Production client build must emit a static stylesheet"
+            exit 1
+          fi
+          if grep -qE 'styleTagTransform|insertStyleElement|injectStylesIntoStyleTag' dist/assets/client.bundle.js; then
+            echo "Production client bundle must not inject CSS at runtime"
+            exit 1
+          fi
           if find dist -name '*.map' -print -quit | grep -q .; then
             echo "Runtime build must not contain source maps"
             exit 1

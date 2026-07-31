@@ -46,8 +46,12 @@ module.exports = {
     ],
   },
   plugins: [
+    // Keep SSR's dependency extraction separate from the browser stylesheet.
+    // The client build owns client.css, which is the only stylesheet served to
+    // production pages. This artifact lets the SSR compilation load the same
+    // component CSS without overwriting the client build output.
     new MiniCssExtractPlugin({
-      filename: "./assets/main.css",
+      filename: "./assets/server.css",
     }),
     new webpack.DefinePlugin({
       "process.env.COMPONENT_VERSION": JSON.stringify(version),

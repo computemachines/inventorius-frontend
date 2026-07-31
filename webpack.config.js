@@ -2,6 +2,7 @@ const webpack = require("webpack");
 const path = require("path");
 const ReactRefreshWebpackPlugin = require("@pmmmwh/react-refresh-webpack-plugin");
 const ForkTsCheckerWebpackPlugin = require("fork-ts-checker-webpack-plugin");
+const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 // const HtmlWebpackPlugin = require('html-webpack-plugin');
 const ReactRefreshTypeScript = require("react-refresh-typescript").default;
 
@@ -72,7 +73,14 @@ module.exports = {
       },
       {
         test: /\.css$/,
-        use: ["style-loader", "css-loader", "postcss-loader"],
+        // HMR needs to replace styles in the running development page.  The
+        // production bundle instead emits a normal stylesheet so it works
+        // with the server's strict `style-src 'self'` CSP.
+        use: [
+          isDevelopment ? "style-loader" : MiniCssExtractPlugin.loader,
+          "css-loader",
+          "postcss-loader",
+        ],
       },
       {
         test: /\.svg$/,
@@ -82,6 +90,10 @@ module.exports = {
   },
   plugins: [
     isDevelopment && !nohot && new ReactRefreshWebpackPlugin(), //do not include in nonhot client builds. results in cryptic error "internal/crypto/hash.js:69 TypeError ERR_INVALID_ARG_TYPE"
+    !isDevelopment &&
+      new MiniCssExtractPlugin({
+        filename: "client.css",
+      }),
     new ForkTsCheckerWebpackPlugin(),
     new webpack.DefinePlugin({
       "process.env.COMPONENT_VERSION": JSON.stringify(version),
