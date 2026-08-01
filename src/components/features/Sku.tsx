@@ -57,20 +57,26 @@ function SkuDetails({
   const [unsavedName, setUnsavedName] = useState("");
   const [unsavedCodes, setUnsavedCodes] = useState([]);
   const [unsavedProperties, setUnsavedProperties] = useState<Property[]>([]);
+  const [loadedSku, setLoadedSku] = useState<ApiSku | null>(null);
   const api = useContext(ApiContext);
 
   useEffect(() => {
-    if (!editable) setSaveState("live");
+    if (!editable && saveState != "live") {
+      setLoadedSku(null);
+      setSaveState("live");
+    }
   }, [editable]);
 
-  useEffect(() => {
-    // if data loads and not editing
+  // Synchronize during rendering so SSR and hydration include loaded fields.
+  const synchronizeLoadedSku = () => {
     if (
       frontloadMeta.done &&
       !frontloadMeta.error &&
       data.sku.kind != "problem" &&
+      data.sku !== loadedSku &&
       saveState == "live"
     ) {
+      setLoadedSku(data.sku);
       setUnsavedName(data.sku.state.name);
       const newUnsavedCodes = [
         ...data.sku.state.owned_codes.map((code) => ({
@@ -123,7 +129,8 @@ function SkuDetails({
         })
       );
     }
-  }, [frontloadMeta, saveState, data]);
+  };
+  synchronizeLoadedSku();
 
   if (frontloadMeta.pending) {
     return <div>Loading...</div>;

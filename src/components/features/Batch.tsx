@@ -25,7 +25,13 @@ import ItemLabel from "../primitives/ItemLabel";
 import PrintButton from "../composites/PrintButton";
 import ItemLocations from "../primitives/ItemLocations";
 import { stringifyUrl } from "query-string";
-import { Problem, Sku, Unit, Unit1 } from "../../api-client/data-models";
+import {
+  Batch as ApiBatch,
+  Problem,
+  Sku,
+  Unit,
+  Unit1,
+} from "../../api-client/data-models";
 import PropertiesTable, {
   api_props_from_properties,
   Property,
@@ -53,6 +59,7 @@ function BatchDetails({
   const [unsavedName, setUnsavedName] = useState("");
   const [unsavedCodes, setUnsavedCodes] = useState<Code[]>([]);
   const [unsavedProperties, setUnsavedProperties] = useState<Property[]>([]);
+  const [loadedBatch, setLoadedBatch] = useState<ApiBatch | null>(null);
 
   const api = useContext(ApiContext);
   const { setToastContent } = useContext(ToastContext);
@@ -76,16 +83,22 @@ function BatchDetails({
   );
 
   useEffect(() => {
-    if (!editable) setSaveState("live");
+    if (!editable && saveState != "live") {
+      setLoadedBatch(null);
+      setSaveState("live");
+    }
   }, [editable]);
 
-  useEffect(() => {
+  // Synchronize during rendering so SSR and hydration include loaded fields.
+  const synchronizeLoadedBatch = () => {
     if (
       frontloadMeta.done &&
       !frontloadMeta.error &&
       data.batch.kind != "problem" &&
+      data.batch !== loadedBatch &&
       saveState == "live"
     ) {
+      setLoadedBatch(data.batch);
       // reset unsaved data
       setUnsavedName(data.batch.state.name);
       setUnsavedCodes([
@@ -144,7 +157,8 @@ function BatchDetails({
         })
       );
     }
-  }, [frontloadMeta, data, saveState]);
+  };
+  synchronizeLoadedBatch();
 
   // useEffect(() => {});
 
