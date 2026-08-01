@@ -28,6 +28,62 @@ import PropertiesTable, {
 import FormSection from "../primitives/FormSection";
 import { labelClasses, inputClasses } from "../composites/SchemaFields";
 
+function SkuLocationsSection({ sku }: { sku: ApiSku }) {
+  const { data, frontloadMeta } = useFrontload(
+    `sku-locations-component:${sku.state.id}`,
+    async () => ({ skuBins: await sku.bins() })
+  );
+
+  return (
+    <FormSection title="Locations" bgAccent="bg-dark-accent">
+      {frontloadMeta.pending ? (
+        <span className="text-[#6d635d] italic">Loading locations…</span>
+      ) : frontloadMeta.error ? (
+        <span className="text-red-600">Problem loading locations.</span>
+      ) : data.skuBins.kind == "sku-locations" ? (
+        <ItemLocations itemLocations={data.skuBins} />
+      ) : (
+        <span className="text-red-600">Problem loading locations.</span>
+      )}
+    </FormSection>
+  );
+}
+
+function SkuBatchesSection({ sku }: { sku: ApiSku }) {
+  const { data, frontloadMeta } = useFrontload(
+    `sku-batches-component:${sku.state.id}`,
+    async () => ({ skuBatches: await sku.batches() })
+  );
+
+  return (
+    <FormSection
+      title="Derived Batches"
+      bgAccent="bg-dark-accent"
+      withSeparator={true}
+    >
+      {frontloadMeta.pending ? (
+        <span className="text-[#6d635d] italic">Loading batches…</span>
+      ) : frontloadMeta.error ? (
+        <span className="text-red-600">Problem loading batches.</span>
+      ) : data.skuBatches.kind == "sku-batches" ? (
+        data.skuBatches.state.length > 0 ? (
+          <ul className="list-disc list-inside space-y-1">
+            {data.skuBatches.state.map((batchId) => (
+              <li key={batchId}>
+                <ItemLabel link={true} label={batchId} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span className="text-[#6d635d] italic">None</span>
+        )
+      ) : (
+        <span className="text-red-600">Problem loading batches.</span>
+      )}
+    </FormSection>
+  );
+}
+
 function SkuDetails({
   requestedId: id,
   editable = false,
@@ -37,16 +93,7 @@ function SkuDetails({
 }) {
   const { data, frontloadMeta, setData } = useFrontload(
     "sku-component",
-    async ({ api }: FrontloadContext) => {
-      const sku = await api.getSku(id);
-      const skuBins = sku.kind == "sku" ? await sku.bins() : sku;
-      const skuBatches = sku.kind == "sku" ? await sku.batches() : sku;
-      return {
-        sku,
-        skuBins,
-        skuBatches,
-      };
-    }
+    async ({ api }: FrontloadContext) => ({ sku: await api.getSku(id) }),
   );
   const { setToastContent: setAlertContent } = useContext(ToastContext);
   const [showModal, setShowModal] = useState(false);
@@ -228,13 +275,7 @@ function SkuDetails({
 
 
       {/* Locations */}
-      <FormSection title="Locations" bgAccent="bg-dark-accent">
-        {data.skuBins.kind == "sku-locations" ? (
-          <ItemLocations itemLocations={data.skuBins} />
-        ) : (
-          <span className="text-red-600">Problem loading locations.</span>
-        )}
-      </FormSection>
+      <SkuLocationsSection sku={data.sku} />
 
       {/* Properties */}
       <FormSection title="Properties" bgAccent="bg-accent">
@@ -253,23 +294,7 @@ function SkuDetails({
       </FormSection>
 
       {/* Derived Batches */}
-      <FormSection title="Derived Batches" bgAccent="bg-dark-accent" withSeparator={true}>
-        {data.skuBatches.kind == "sku-batches" ? (
-          data.skuBatches.state.length > 0 ? (
-            <ul className="list-disc list-inside space-y-1">
-              {data.skuBatches.state.map((batchId) => (
-                <li key={batchId}>
-                  <ItemLabel link={true} label={batchId} />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <span className="text-[#6d635d] italic">None</span>
-          )
-        ) : (
-          <span className="text-red-600">Problem loading batches.</span>
-        )}
-      </FormSection>
+      <SkuBatchesSection sku={data.sku} />
 
 
       {/* Codes */}
@@ -324,11 +349,7 @@ function SkuDetails({
 
                   const updatedSku = await api.getSku(id);
 
-                  setData(({ skuBins, skuBatches }) => ({
-                    sku: updatedSku,
-                    skuBins,
-                    skuBatches,
-                  }));
+                  setData(() => ({ sku: updatedSku }));
 
                   navigate(generatePath("/sku/:id", { id }));
                 }
