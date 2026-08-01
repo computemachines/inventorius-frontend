@@ -7,7 +7,7 @@ set -e
 ENV="${1:-staging}"
 
 if [ "$ENV" = "staging" ]; then
-  BASE_URL="https://staging.computemachines.com"
+  BASE_URL="https://staging.inventory.computemachines.com"
 elif [ "$ENV" = "local" ]; then
   BASE_URL="http://localhost:8000"
 else
