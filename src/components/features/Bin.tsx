@@ -21,6 +21,7 @@ import { FourOhFour } from "../primitives/FourOhFour";
 import ItemLabel from "../primitives/ItemLabel";
 import PrintButton from "../composites/PrintButton";
 import { Batch, Problem, Sku } from "../../api-client/data-models";
+import QuantityHoldings from "./QuantityHoldings";
 
 function BinContentsTable({
   key = "",
@@ -152,6 +153,12 @@ function BinDetails({ requestedId }: { requestedId: string }): React.ReactElemen
             key={canonicalBinId}
             contents={data.bin.state.contents}
           />
+        </div>
+      </div>
+      <div className="info-item">
+        <div className="info-item-title">Physical quantity evidence</div>
+        <div className="info-item-description">
+          <QuantityHoldings locationId={canonicalBinId} />
         </div>
       </div>
     </div>

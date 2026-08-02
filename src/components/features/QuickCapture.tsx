@@ -29,6 +29,13 @@ export default function QuickCapture() {
   ]);
   const [binId, setBinId] = useState("");
   const [quantity, setQuantity] = useState("1");
+  const [quantityMode, setQuantityMode] = useState<"estimated" | "exact">(
+    "estimated"
+  );
+  const [unit, setUnit] = useState("each");
+  const [lower, setLower] = useState("");
+  const [upper, setUpper] = useState("");
+  const [capacity, setCapacity] = useState("");
   const [validationError, setValidationError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -63,8 +70,45 @@ export default function QuickCapture() {
       descriptionInput.current?.focus();
       return;
     }
-    if (!Number.isInteger(count) || count < 1) {
-      setValidationError("Quantity must be a positive whole number.");
+    if (!Number.isFinite(count) || count <= 0) {
+      setValidationError("Enter a positive count or estimate.");
+      return;
+    }
+    if (unit === "each" && !Number.isInteger(count)) {
+      setValidationError("Counts of individual items must be whole numbers.");
+      return;
+    }
+    if (quantityMode === "exact" && unit !== "each") {
+      setValidationError("Measured material should be recorded as an estimate for now.");
+      return;
+    }
+
+    const lowerValue = lower.trim() === "" ? 0 : Number(lower);
+    const upperValue = upper.trim() === "" ? count * 2 : Number(upper);
+    const capacityValue = capacity.trim() === "" ? null : Number(capacity);
+    if (
+      quantityMode === "estimated" &&
+      (!Number.isFinite(lowerValue) ||
+        !Number.isFinite(upperValue) ||
+        (capacityValue !== null && !Number.isFinite(capacityValue)) ||
+        lowerValue < 0 ||
+        lowerValue > count ||
+        count > upperValue ||
+        (capacityValue !== null && upperValue > capacityValue))
+    ) {
+      setValidationError(
+        "Quantity must follow lower bound ≤ best estimate ≤ upper bound ≤ capacity."
+      );
+      return;
+    }
+    if (
+      quantityMode === "estimated" &&
+      unit === "each" &&
+      ![lowerValue, upperValue, capacityValue]
+        .filter((value): value is number => value !== null)
+        .every(Number.isInteger)
+    ) {
+      setValidationError("Counts of individual items must use whole bounds.");
       return;
     }
 
@@ -76,8 +120,19 @@ export default function QuickCapture() {
       const payload = {
         description: summary,
         bin_id: destination,
-        quantity: count,
-        unit: "each" as const,
+        unit,
+        ...(quantityMode === "exact"
+          ? { quantity: count, unit: "each" as const }
+          : {
+              quantity_claim: {
+                domain: unit === "each" ? ("discrete" as const) : ("continuous" as const),
+                basis: "estimated" as const,
+                preferred: quantity,
+                ...(lower.trim() === "" ? {} : { lower: lower.trim() }),
+                ...(upper.trim() === "" ? {} : { upper: upper.trim() }),
+                ...(capacity.trim() === "" ? {} : { capacity: capacity.trim() }),
+              },
+            }),
         ...(observedCodes.length ? { observed_codes: observedCodes } : {}),
       };
       const response = await api.quickCapture(
@@ -93,14 +148,28 @@ export default function QuickCapture() {
       setToastContent({
         content: (
           <p>
-            Captured {response.state.quantity} × {response.state.description} as{" "}
+            {response.state.quantity_native ? (
+              <>
+                Captured an estimate of {response.state.quantity_claim.lower}–
+                {response.state.quantity_claim.upper} {response.state.unit} for{" "}
+              </>
+            ) : (
+              <>
+                Captured {"quantity" in response.state ? response.state.quantity : "?"} ×{" "}
+              </>
+            )}
+            {response.state.description} as{" "}
             <ItemLabel label={response.state.sku_id} /> in{" "}
             <ItemLabel label={response.state.bin_id} />.{" "}
             <Link
               className="font-semibold underline"
-              to={`/activity/${encodeURIComponent(response.state.operation_id)}`}
+              to={
+                response.state.quantity_native
+                  ? `/batch/${encodeURIComponent(response.state.batch_id)}`
+                  : `/activity/${encodeURIComponent(response.state.operation_id)}`
+              }
             >
-              Review or correct
+              {response.state.quantity_native ? "Review estimate" : "Review or correct"}
             </Link>
           </p>
         ),
@@ -113,6 +182,9 @@ export default function QuickCapture() {
       setDescription("");
       setCodes([{ kind: "owned", value: "" }]);
       setQuantity("1");
+      setLower("");
+      setUpper("");
+      setCapacity("");
       idempotency.clear();
       navigate(`/capture?into=${encodeURIComponent(destination)}`, {
         replace: true,
@@ -186,19 +258,118 @@ export default function QuickCapture() {
         />
       </div>
 
-      <label htmlFor="capture-quantity" className={labelClasses}>
-        Quantity
-      </label>
-      <input
-        id="capture-quantity"
-        type="number"
-        min="1"
-        step="1"
-        inputMode="numeric"
-        value={quantity}
-        onChange={(event) => setQuantity(event.target.value)}
-        className={`${inputClasses} mb-7`}
-      />
+      <fieldset className="mb-5">
+        <legend className={labelClasses}>How certain is the quantity?</legend>
+        <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-md border border-[#cdd2d6] bg-white px-4 py-3">
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="capture-quantity-mode"
+              checked={quantityMode === "estimated"}
+              onChange={() => setQuantityMode("estimated")}
+            />
+            Estimated
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="capture-quantity-mode"
+              checked={quantityMode === "exact"}
+              onChange={() => {
+                setQuantityMode("exact");
+                setUnit("each");
+              }}
+            />
+            Counted exactly
+          </label>
+        </div>
+      </fieldset>
+
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(8rem,0.6fr)] gap-3 mb-5">
+        <div>
+          <label htmlFor="capture-quantity" className={labelClasses}>
+            {quantityMode === "estimated" ? "Best estimate" : "Exact count"}
+          </label>
+          <input
+            id="capture-quantity"
+            type="number"
+            min="0"
+            step={unit === "each" ? "1" : "any"}
+            inputMode="decimal"
+            value={quantity}
+            onChange={(event) => setQuantity(event.target.value)}
+            className={inputClasses}
+          />
+        </div>
+        <div>
+          <label htmlFor="capture-unit" className={labelClasses}>Unit</label>
+          <select
+            id="capture-unit"
+            value={unit}
+            disabled={quantityMode === "exact"}
+            onChange={(event) => setUnit(event.target.value)}
+            className={inputClasses}
+          >
+            <option value="each">items</option>
+            <option value="milliliter">milliliters</option>
+            <option value="gram">grams</option>
+            <option value="meter">meters</option>
+          </select>
+        </div>
+      </div>
+
+      {quantityMode === "estimated" && (
+        <details className="mb-7 rounded-md border border-[#cdd2d6] bg-[#f8fafb] px-4 py-3">
+          <summary className="cursor-pointer font-semibold text-[#29434e]">
+            I know more about the range
+          </summary>
+          <p className="mt-2 mb-4 text-sm text-[#6d635d]">
+            Blank bounds use zero and twice your estimate. Capacity is a hard
+            physical maximum, such as the bottle size.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label htmlFor="capture-lower" className={labelClasses}>Lower bound</label>
+              <input
+                id="capture-lower"
+                type="number"
+                min="0"
+                step={unit === "each" ? "1" : "any"}
+                placeholder="0"
+                value={lower}
+                onChange={(event) => setLower(event.target.value)}
+                className={inputClasses}
+              />
+            </div>
+            <div>
+              <label htmlFor="capture-upper" className={labelClasses}>Upper bound</label>
+              <input
+                id="capture-upper"
+                type="number"
+                min="0"
+                step={unit === "each" ? "1" : "any"}
+                placeholder="Twice estimate"
+                value={upper}
+                onChange={(event) => setUpper(event.target.value)}
+                className={inputClasses}
+              />
+            </div>
+            <div>
+              <label htmlFor="capture-capacity" className={labelClasses}>Capacity</label>
+              <input
+                id="capture-capacity"
+                type="number"
+                min="0"
+                step={unit === "each" ? "1" : "any"}
+                placeholder="Optional"
+                value={capacity}
+                onChange={(event) => setCapacity(event.target.value)}
+                className={inputClasses}
+              />
+            </div>
+          </div>
+        </details>
+      )}
 
       <button
         type="submit"

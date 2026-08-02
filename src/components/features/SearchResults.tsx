@@ -77,12 +77,19 @@ function HoldingLocation({
   location: SearchResultLocation;
   showBatch: boolean;
 }) {
+  const quantityLabel =
+    location.quantity_kind === "feasible-physical"
+      ? location.quantity_status === "conflict"
+        ? "Conflicting physical estimates"
+        : `Estimated ${location.minimum ?? "?"}–${location.maximum ?? "?"}` +
+          (location.preferred == null ? "" : ` (best ${location.preferred})`)
+      : `${location.quantity}`;
   return (
     <li className="leading-5">
       <ItemLabel label={location.location_id} />
       {" · "}
       <span>
-        {location.quantity}
+        {quantityLabel}
         {location.unit ? ` ${location.unit}` : " (unit unrecorded)"}
       </span>
       {showBatch && (

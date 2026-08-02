@@ -41,6 +41,7 @@ import WarnModal from "../primitives/WarnModal";
 import FormSection from "../primitives/FormSection";
 import { labelClasses, inputClasses } from "../composites/SchemaFields";
 import { useAuth } from "../auth/AuthContext";
+import QuantityHoldings from "./QuantityHoldings";
 
 function BatchDetails({
   requestedId: batch_id,
@@ -305,6 +306,12 @@ function BatchDetails({
       <FormSection title="Locations" bgAccent="bg-dark-accent" withSeparator={true}>
         {itemLocations}
       </FormSection>
+
+      {!editable && (
+        <FormSection title="Physical quantity evidence" bgAccent="bg-accent" withSeparator={true}>
+          <QuantityHoldings batchId={data.batch.state.id} />
+        </FormSection>
+      )}
 
       {/* Codes */}
       <FormSection title="Codes" bgAccent="bg-accent">

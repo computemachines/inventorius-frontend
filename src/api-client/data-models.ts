@@ -120,16 +120,51 @@ export interface BatchCreationRequest {
   props?: unknown;
 }
 
-interface IntakeState {
+type ExactQuantityValue = number | string;
+
+export type QuantityDomain = "discrete" | "continuous";
+export type QuantityBasis = "counted" | "measured" | "estimated" | "calculated";
+
+export interface QuantityClaimRequest {
+  domain: QuantityDomain;
+  basis: QuantityBasis;
+  lower?: ExactQuantityValue;
+  preferred?: ExactQuantityValue;
+  upper?: ExactQuantityValue;
+  capacity?: ExactQuantityValue;
+}
+
+export interface QuantityClaimState {
+  domain: QuantityDomain;
+  basis: QuantityBasis;
+  lower: ExactQuantityValue | null;
+  preferred: ExactQuantityValue | null;
+  upper: ExactQuantityValue | null;
+  capacity: ExactQuantityValue | null;
+}
+
+interface IntakeStateBase {
   sku_id: string;
   batch_id: string;
   operation_id: string;
   bin_id: string;
-  quantity: number;
-  unit: "each";
+  unit: string;
   observed_codes: string[];
   provisional: true;
 }
+
+interface ExactIntakeState extends IntakeStateBase {
+  quantity: number;
+  unit: "each";
+  quantity_native?: false;
+}
+
+interface QuantityNativeIntakeState extends IntakeStateBase {
+  quantity_native: true;
+  quantity_claim: QuantityClaimState;
+}
+
+type IntakeState = ExactIntakeState | QuantityNativeIntakeState;
 
 /** The Quick Capture branch allocated a provisional SKU from its description. */
 export interface CaptureResult extends Status {
@@ -157,12 +192,107 @@ export type IntakeRequest =
       observed_codes?: string[];
     }
   | {
+      description: string;
+      bin_id: string;
+      quantity_claim: QuantityClaimRequest;
+      unit: string;
+      observed_codes?: string[];
+    }
+  | {
       sku_id: string;
       bin_id: string;
       quantity: number;
       unit: "each";
       observed_codes?: string[];
+    }
+  | {
+      sku_id: string;
+      bin_id: string;
+      quantity_claim: QuantityClaimRequest;
+      unit: string;
+      observed_codes?: string[];
     };
+
+export interface QuantityHoldingIdentity {
+  batch_id: string;
+  location_id: string;
+  unit: string;
+  packaging_configuration_id: string | null;
+}
+
+export interface QuantityPhysicalView {
+  status: "feasible" | "conflict" | "indeterminate";
+  minimum: ExactQuantityValue | null;
+  preferred: ExactQuantityValue | null;
+  maximum: ExactQuantityValue | null;
+  capacity: ExactQuantityValue | null;
+  unit: string;
+  domain: QuantityDomain;
+  conflict_fact_ids: string[];
+}
+
+export interface QuantityHistoryItem {
+  fact_id: string;
+  sequence: number;
+  kind: "opening" | "withdrawal" | "observation";
+  recorded_at: string | null;
+  active: boolean;
+  superseded_by_fact_id: string | null;
+  claim: {
+    basis: QuantityBasis;
+    lower: ExactQuantityValue | null;
+    preferred: ExactQuantityValue | null;
+    upper: ExactQuantityValue | null;
+    capacity: ExactQuantityValue | null;
+  } | null;
+  amount: ExactQuantityValue | null;
+}
+
+export interface QuantityHoldingResource {
+  stream_id: string;
+  holding: QuantityHoldingIdentity;
+  current_state_id: string;
+  last_sequence: number;
+  accepted_book: {
+    status: "absent" | "exact";
+    quantity: ExactQuantityValue | null;
+    unit: string;
+  };
+  feasible_physical: QuantityPhysicalView;
+  history: QuantityHistoryItem[];
+}
+
+export interface QuantityHoldingsResult {
+  kind: "quantity-holdings";
+  state: { holdings: QuantityHoldingResource[] };
+}
+
+export interface QuantityObservationRequest {
+  batch_id: string;
+  location_id: string;
+  unit: string;
+  domain: QuantityDomain;
+  packaging_configuration_id?: null;
+  claim: QuantityClaimRequest;
+  supersedes_fact_id?: string;
+}
+
+export interface QuantityWithdrawalRequest {
+  batch_id: string;
+  location_id: string;
+  unit: string;
+  domain: QuantityDomain;
+  packaging_configuration_id?: null;
+  amount: ExactQuantityValue;
+}
+
+export interface QuantityCommandResult extends Status {
+  state: {
+    observation?: Record<string, unknown>;
+    operation?: Record<string, unknown>;
+    holding: QuantityHoldingResource;
+  };
+}
 
 /**
  * A constrained inventory command submitted by a scanner-facing workflow.
@@ -1035,7 +1165,12 @@ export interface SearchMatchReason {
 export interface SearchResultLocation {
   location_id: string;
   batch_id: string;
-  quantity: number | string;
+  quantity: number | string | null;
+  quantity_kind?: "accepted-book" | "feasible-physical";
+  quantity_status?: QuantityPhysicalView["status"];
+  minimum?: ExactQuantityValue | null;
+  preferred?: ExactQuantityValue | null;
+  maximum?: ExactQuantityValue | null;
   unit: string | null;
   packaging_configuration_id: string | null;
 }

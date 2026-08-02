@@ -39,6 +39,10 @@ import {
   ResourceCreationResult,
   ResourceCreationProblem,
   RestOperation,
+  QuantityCommandResult,
+  QuantityHoldingsResult,
+  QuantityObservationRequest,
+  QuantityWithdrawalRequest,
   decodeRestOperation,
 } from "./data-models";
 import type {
@@ -556,6 +560,64 @@ export class ApiClient {
     // The `description` request branch is guaranteed by the intake contract
     // to allocate a SKU, and therefore has the CaptureResult response shape.
     return response.kind === "problem" ? response : (response as CaptureResult);
+  }
+
+  async getQuantityHoldings({
+    batchId,
+    locationId,
+  }: {
+    batchId?: string;
+    locationId?: string;
+  }): Promise<QuantityHoldingsResult | Problem> {
+    const params = new URLSearchParams();
+    if (batchId) params.set("batch_id", batchId);
+    if (locationId) params.set("location_id", locationId);
+    const response = await this._fetch(
+      `${this.hostname}/api/quantity-holdings?${params.toString()}`,
+    );
+    const json = await response.json();
+    if (response.ok) return { ...json, kind: "quantity-holdings" };
+    return { ...json, kind: "problem" };
+  }
+
+  async postQuantityObservation(
+    command: QuantityObservationRequest,
+    idempotencyKey: string,
+  ): Promise<QuantityCommandResult | Problem> {
+    const response = await this._fetch(
+      `${this.hostname}/api/quantity-observations`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify(command),
+      },
+    );
+    const json = await response.json();
+    if (response.ok) return { ...json, kind: "status" };
+    return { ...json, kind: "problem" };
+  }
+
+  async postQuantityWithdrawal(
+    command: QuantityWithdrawalRequest,
+    idempotencyKey: string,
+  ): Promise<QuantityCommandResult | Problem> {
+    const response = await this._fetch(
+      `${this.hostname}/api/quantity-withdrawals`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify(command),
+      },
+    );
+    const json = await response.json();
+    if (response.ok) return { ...json, kind: "status" };
+    return { ...json, kind: "problem" };
   }
 
   async getInventoryCandidates({
