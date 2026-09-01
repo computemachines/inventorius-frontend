@@ -43,6 +43,8 @@ import {
   QuantityHoldingsResult,
   QuantityObservationRequest,
   QuantityWithdrawalRequest,
+  SolverQueryRequest,
+  SolverQueryResult,
   decodeRestOperation,
 } from "./data-models";
 import type {
@@ -618,6 +620,17 @@ export class ApiClient {
     const json = await response.json();
     if (response.ok) return { ...json, kind: "status" };
     return { ...json, kind: "problem" };
+  }
+
+  async evaluateSolverQuery(
+    command: SolverQueryRequest,
+  ): Promise<SolverQueryResult | Problem> {
+    const response = await this._fetch(`${this.hostname}/api/solver/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(command),
+    });
+    return response.json();
   }
 
   async getInventoryCandidates({

@@ -294,6 +294,17 @@ export interface QuantityCommandResult extends Status {
   };
 }
 
+/** Raw, temporary solver documents edited by the Advanced Solver Lab. */
+export interface SolverQueryRequest {
+  snapshot: Record<string, unknown>;
+  overlay?: Record<string, unknown>;
+  query: Record<string, unknown>;
+}
+
+export interface SolverQueryResult {
+  state: { result: Record<string, unknown> };
+}
+
 /**
  * A constrained inventory command submitted by a scanner-facing workflow.
  *

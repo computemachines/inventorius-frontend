@@ -18,6 +18,7 @@ function Navbar({
     hasOperation("create-sku") ||
     hasOperation("create-batch");
   const canMutateInventory = hasOperation("inventory-operation");
+  const canUseAdmin = hasOperation("schema-admin") || hasOperation("solver-query");
   return (
     <nav
       onBlur={() => {
@@ -85,17 +86,26 @@ function Navbar({
           </NavLink>
         </>
       )}
-      {hasOperation("schema-admin") ? (
+      {canUseAdmin ? (
         <NavlinkDropdown text="Admin">
-          <NavLink className="navlink" to="/admin/schema">
-            Schema Admin
-          </NavLink>
-          <NavLink className="navlink" to="/demo/schema">
-            Schema Demo
-          </NavLink>
-          <NavLink className="navlink" to="/admin/settings">
-            Settings
-          </NavLink>
+          {hasOperation("schema-admin") && (
+            <>
+              <NavLink className="navlink" to="/admin/schema">
+                Schema Admin
+              </NavLink>
+              <NavLink className="navlink" to="/demo/schema">
+                Schema Demo
+              </NavLink>
+              <NavLink className="navlink" to="/admin/settings">
+                Settings
+              </NavLink>
+            </>
+          )}
+          {hasOperation("solver-query") && (
+            <NavLink className="navlink" to="/admin/solver">
+              Solver Lab
+            </NavLink>
+          )}
         </NavlinkDropdown>
       ) : (
         <NavLink className="navlink" to="/demo/schema">
