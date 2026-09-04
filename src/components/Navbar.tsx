@@ -93,14 +93,14 @@ function Navbar({
               <NavLink className="navlink" to="/admin/schema">
                 Schema Admin
               </NavLink>
-              <NavLink className="navlink" to="/demo/schema">
-                Schema Demo
-              </NavLink>
               <NavLink className="navlink" to="/admin/settings">
                 Settings
               </NavLink>
             </>
           )}
+          <NavLink className="navlink" to="/demo/schema">
+            Schema Demo
+          </NavLink>
           {hasOperation("solver-query") && (
             <NavLink className="navlink" to="/admin/solver">
               Solver Lab
