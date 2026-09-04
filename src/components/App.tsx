@@ -40,6 +40,7 @@ import { AuthProvider, useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
 import BootstrapOwner from "./auth/BootstrapOwner";
 import AccountSecurity from "./auth/AccountSecurity";
+import SolverLab from "./features/SolverLab";
 
 function RequireOperation({
   rel,
@@ -123,6 +124,7 @@ function App() {
                 <Route path="/demo/schema" element={<SchemaDemo />} />
                 <Route path="/admin/schema" element={<RequireOperation rel="schema-admin"><SchemaAdmin /></RequireOperation>} />
                 <Route path="/admin/settings" element={<RequireOperation rel="schema-admin"><AdminSettings /></RequireOperation>} />
+                <Route path="/admin/solver" element={<RequireOperation rel="solver-query"><SolverLab /></RequireOperation>} />
                 <Route path="*" element={<FourOhFour />} />
                 </Routes>
               </ToastContext.Provider>
