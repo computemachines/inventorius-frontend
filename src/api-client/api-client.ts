@@ -200,6 +200,9 @@ export class ApiClient {
       throw Error(`${this.hostname}/api/next/bin returned error status`);
     return new NextBin({
       ...json,
+      // The next-ID response is a read-only hint. Creation is a separate
+      // command and is no longer advertised on this response.
+      operations: json.operations ?? [],
       hostname: this.hostname,
       transport: this._fetch.bind(this),
     });
