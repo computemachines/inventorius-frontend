@@ -104,6 +104,7 @@ function BatchDetails({
     ) {
       setLoadedBatch(data.batch);
       // reset unsaved data
+      setUnsavedParentSkuId(data.batch.state.sku_id || "");
       setUnsavedName(data.batch.state.name);
       setUnsavedCodes([
         ...(data.batch.state.owned_codes || []).map((value) => ({
