@@ -27,6 +27,7 @@ const PRINT_TERMINAL_STATES: PrintState[] = [
   "disconnected",
   "unknown",
 ];
+const FALLBACK_BIN_PLACEHOLDER = "Leave blank to allocate the next label";
 
 function NewBin() {
   const { setToastContent } = useContext(ToastContext);
@@ -38,6 +39,9 @@ function NewBin() {
   const submissionGenerationRef = useRef(0);
 
   const [binIdValue, setBinIdValue] = useState("");
+  const [nextBinPlaceholder, setNextBinPlaceholder] = useState(
+    FALLBACK_BIN_PLACEHOLDER,
+  );
   const [persistedBin, setPersistedBin] = useState<PersistedBin | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [creationOutcomeUnknown, setCreationOutcomeUnknown] = useState(false);
@@ -68,6 +72,29 @@ function NewBin() {
       );
     }
   }, [pendingCommand.pending, pendingCommand.ready]);
+
+  useEffect(() => {
+    if (persistedBin) return;
+
+    let active = true;
+    setNextBinPlaceholder(FALLBACK_BIN_PLACEHOLDER);
+    api
+      .getNextBin()
+      .then((nextBin) => {
+        if (active && mountedRef.current) {
+          setNextBinPlaceholder(nextBin.state);
+        }
+      })
+      .catch(() => {
+        if (active && mountedRef.current) {
+          setNextBinPlaceholder(FALLBACK_BIN_PLACEHOLDER);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [api, persistedBin]);
 
   useEffect(() => {
     if (persistedBin && printOutcomeVisible) {
@@ -203,7 +230,7 @@ function NewBin() {
         id="bin_id"
         spellCheck={false}
         readOnly={submitting || creationOutcomeUnknown}
-        placeholder="Leave blank to allocate the next label"
+        placeholder={nextBinPlaceholder}
         className="form-single-code-input"
         value={binIdValue}
         onChange={(e) => setBinIdValue(e.target.value)}
