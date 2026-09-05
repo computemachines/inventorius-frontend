@@ -27,6 +27,7 @@ import PropertiesTable, {
 } from "../composites/PropertiesTable";
 import FormSection from "../primitives/FormSection";
 import { labelClasses, inputClasses } from "../composites/SchemaFields";
+import { SchemaPropertiesEditor } from "../composites/SchemaPropertiesEditor";
 
 function SkuLocationsSection({ sku }: { sku: ApiSku }) {
   const { data, frontloadMeta } = useFrontload(
@@ -104,6 +105,8 @@ function SkuDetails({
   const [unsavedName, setUnsavedName] = useState("");
   const [unsavedCodes, setUnsavedCodes] = useState([]);
   const [unsavedProperties, setUnsavedProperties] = useState<Property[]>([]);
+  const [unsavedRawProperties, setUnsavedRawProperties] = useState<Record<string, unknown>>({});
+  const [schemaPropertiesValid, setSchemaPropertiesValid] = useState(true);
   const [loadedSku, setLoadedSku] = useState<ApiSku | null>(null);
   const api = useContext(ApiContext);
 
@@ -136,6 +139,8 @@ function SkuDetails({
         })),
       ];
       setUnsavedCodes(newUnsavedCodes);
+      setUnsavedRawProperties({ ...(data.sku.state.props || {}) });
+      setSchemaPropertiesValid(true);
 
       // Load props into Property objects
       setUnsavedProperties(
@@ -153,7 +158,7 @@ function SkuDetails({
             } else {
               typed = { kind: "string", value: value };
             }
-          } else if (typeof value == "object") {
+          } else if (typeof value == "object" && value !== null) {
             if ("unit" in value && "value" in value) {
               const physical = new Unit1(
                 value as { unit: string; value: number }
@@ -163,7 +168,7 @@ function SkuDetails({
                   typed = { kind: "currency", value: physical.value };
                   break;
                 default:
-                  throw new Error("Unsupported api unit type: " + physical.unit);
+                  typed = { kind: "string", value: JSON.stringify(value) };
               }
             } else {
               // Generic object - stringify it
@@ -279,11 +284,20 @@ function SkuDetails({
 
       {/* Properties */}
       <FormSection title="Properties" bgAccent="bg-accent">
-        {unsavedProperties.length == 0 && !editable ? (
+        {editable ? (
+          <SchemaPropertiesEditor
+            schemaName="sku"
+            resourceId={data.sku.state.id}
+            properties={unsavedRawProperties}
+            onChange={setUnsavedRawProperties}
+            onDirty={() => setSaveState("unsaved")}
+            onValidityChange={setSchemaPropertiesValid}
+          />
+        ) : unsavedProperties.length == 0 ? (
           <span className="text-[#6d635d] italic">None</span>
         ) : (
           <PropertiesTable
-            editable={editable}
+            editable={false}
             properties={unsavedProperties}
             setProperties={(properties) => {
               setSaveState("unsaved");
@@ -331,7 +345,7 @@ function SkuDetails({
                   associated_codes: unsavedCodes
                     .filter(({ kind, value }) => kind == "associated" && value)
                     .map(({ value }) => value),
-                  props: api_props_from_properties(unsavedProperties),
+                  props: unsavedRawProperties,
                 });
 
                 if (resp.kind == "problem") {
@@ -354,7 +368,7 @@ function SkuDetails({
                   navigate(generatePath("/sku/:id", { id }));
                 }
               }}
-              disabled={saveState == "saving"}
+              disabled={saveState == "saving" || !schemaPropertiesValid}
               className="flex-1 py-3 px-6 text-base font-semibold bg-[#26532b] text-white rounded-md hover:bg-[#1e4423] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
             >
               {saveState == "saving" ? "Saving..." : "Save Changes"}

@@ -10,7 +10,11 @@ import * as React from "react";
 import { useContext, useState, useEffect, useCallback } from "react";
 import { ApiContext, FileUploadState } from "../../api-client/api-client";
 import { AttributeBundle } from "../../api-client/data-models";
-import { SchemaField } from "../../hooks/useSchemaForm";
+import { SchemaField, SchemaValues } from "../../hooks/useSchemaForm";
+import {
+  valueForSchemaInput,
+  valueFromSchemaInput,
+} from "./schema-property-values";
 import { AsyncTypeaheadField } from "./Typeahead";
 
 // Shared Tailwind classes (design system)
@@ -56,7 +60,8 @@ const TextRenderer: FieldRenderer = ({ value, onChange, inputId }) => (
 const NumberRenderer: FieldRenderer = ({ value, onChange, inputId }) => (
   <input
     id={inputId}
-    type="number"
+    type="text"
+    inputMode="decimal"
     value={(value as string) ?? ""}
     onChange={(e) => onChange(e.target.value)}
     className={inputClasses}
@@ -99,6 +104,7 @@ const UnitRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => (
     <input
       id={inputId}
       type="text"
+      inputMode="decimal"
       value={(value as string) ?? ""}
       onChange={(e) => onChange(e.target.value)}
       className={`${inputClasses} flex-1 rounded-r-none border-r-0`}
@@ -397,9 +403,9 @@ interface SchemaFieldListProps {
   /** Fields to render */
   fields: SchemaField[];
   /** Current field values */
-  values: Record<string, string | boolean>;
+  values: SchemaValues;
   /** Called when a field changes */
-  onChange: (name: string, value: string | boolean) => void;
+  onChange: (name: string, value: unknown) => void;
   /** Entity type for typeahead searches (e.g., "sku", "batch") */
   entityType?: EntityType;
   /** Map of field names to their API trigger field names */
@@ -433,8 +439,10 @@ export function SchemaFieldList({
           <SchemaFieldInput
             key={field.name}
             field={field}
-            value={values[field.name] ?? ""}
-            onChange={onChange}
+            value={valueForSchemaInput(field, values[field.name])}
+            onChange={(name, value) =>
+              onChange(name, valueFromSchemaInput(field, value))
+            }
             entityType={entityType}
             triggerApiField={triggerApiField}
             isTypeahead={!!triggerApiField}

@@ -1,202 +1,188 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
-/**
- * Field definition from the schema API
- */
 export interface SchemaField {
   name: string;
-  type: string; // "text" | "number" | "enum" | "bool" | "unit"
+  type: string;
   options?: string[];
   unit?: string;
   required?: boolean;
 }
 
-/**
- * Response from the /evaluate endpoint
- */
+export type SchemaValue = unknown;
+export type SchemaValues = Record<string, SchemaValue>;
+
 interface EvaluateResponse {
   active_mixins: string[];
+  root_mixins?: string[];
+  implicit_root_mixins?: string[];
   available_fields: SchemaField[];
 }
 
-/**
- * Hook for forms that use the unified trigger schema system.
- *
- * This replaces useDynamicFields with a simpler architecture:
- * - fieldValues is the ONLY state (WYSIWYG)
- * - Server computes which fields are available
- * - restorationCache preserves values for UX when fields disappear/reappear
- */
-export function useSchemaForm(schemaName: string, rootMixins: string[]) {
-  const [activeMixins, setActiveMixins] = useState<string[]>(rootMixins);
-  const [fieldValues, setFieldValues] = useState<Record<string, string | boolean>>({});
+export interface SchemaFormOptions {
+  activeMixins?: string[];
+  initialValues?: SchemaValues;
+  resourceId?: string;
+  useSchemaRoots?: boolean;
+  preserveUnavailableValues?: boolean;
+}
+
+/** Keep property values in their API representation while evaluating a form. */
+export function useSchemaForm(
+  schemaName: string,
+  optionsOrRoots: SchemaFormOptions | string[] = {},
+) {
+  const options: SchemaFormOptions = Array.isArray(optionsOrRoots)
+    ? { activeMixins: optionsOrRoots }
+    : optionsOrRoots;
+  const initialMixinsRef = useRef(options.activeMixins ?? []);
+  const initialValuesRef = useRef(options.initialValues ?? {});
+  const [activeMixins, setActiveMixins] = useState<string[]>(initialMixinsRef.current);
+  const [implicitRootMixins, setImplicitRootMixins] = useState<string[]>([]);
+  const [schemaRootMixins, setSchemaRootMixins] = useState<string[]>([]);
+  const [fieldValues, setFieldValues] = useState<SchemaValues>(initialValuesRef.current);
   const [availableFields, setAvailableFields] = useState<SchemaField[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const restorationCache = useRef<SchemaValues>({});
+  const requestGeneration = useRef(0);
+  const requestAbort = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+  const resourceId = options.resourceId;
+  const useSchemaRoots = options.useSchemaRoots ?? false;
+  const preserveUnavailableValues = options.preserveUnavailableValues ?? false;
 
-  // Restoration cache - NOT React state, changes don't trigger re-renders
-  const restorationCache = useRef<Record<string, string | boolean>>({});
-
-  // Evaluate the schema whenever field values change
   const evaluate = useCallback(async () => {
+    const generation = ++requestGeneration.current;
+    requestAbort.current?.abort();
+    const abort = new AbortController();
+    requestAbort.current = abort;
     setError(null);
-    const loadingTimer = setTimeout(() => setLoading(true), 200);
+    const loadingTimer = setTimeout(() => {
+      if (mounted.current && !abort.signal.aborted) setLoading(true);
+    }, 200);
     try {
-      const resp = await fetch(`/api/schema/${schemaName}/evaluate`, {
+      const response = await fetch(`/api/schema/${schemaName}/evaluate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: abort.signal,
         body: JSON.stringify({
-          active_mixins: rootMixins,
+          active_mixins: initialMixinsRef.current,
           field_values: fieldValues,
+          use_schema_roots: useSchemaRoots,
+          ...(resourceId ? { resource_id: resourceId } : {}),
         }),
       });
-
-      if (!resp.ok) {
-        throw new Error(`API error: ${resp.status}`);
-      }
-
-      const data: EvaluateResponse = await resp.json();
-
-      // Only update state if values actually changed (prevent infinite loops)
-      setActiveMixins((prev) => {
-        const newVal = data.active_mixins;
-        return JSON.stringify(prev) === JSON.stringify(newVal) ? prev : newVal;
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      const data = (await response.json()) as EvaluateResponse;
+      if (!mounted.current || generation !== requestGeneration.current) return;
+      setActiveMixins((previous) => sameJson(previous, data.active_mixins) ? previous : data.active_mixins);
+      setImplicitRootMixins((previous) => {
+        const next = data.implicit_root_mixins ?? [];
+        return sameJson(previous, next) ? previous : next;
       });
-      setAvailableFields((prev) => {
-        const newVal = data.available_fields;
-        return JSON.stringify(prev) === JSON.stringify(newVal) ? prev : newVal;
+      setSchemaRootMixins((previous) => {
+        const next = data.root_mixins ?? [];
+        return sameJson(previous, next) ? previous : next;
       });
+      setAvailableFields((previous) => sameJson(previous, data.available_fields) ? previous : data.available_fields);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
+      if (
+        mounted.current &&
+        !abort.signal.aborted &&
+        generation === requestGeneration.current
+      ) {
+        setError(e instanceof Error ? e.message : "Unknown error");
+      }
     } finally {
       clearTimeout(loadingTimer);
-      setLoading(false);
+      if (mounted.current && generation === requestGeneration.current) setLoading(false);
     }
-  }, [schemaName, rootMixins, fieldValues]);
+  }, [fieldValues, resourceId, schemaName, useSchemaRoots]);
 
-  // Track if this is the first evaluation (no debounce needed)
   const isFirstEval = useRef(true);
-
-  // Single effect for both initial load and field value changes
   useEffect(() => {
-    // Don't retry on error - user must call retry() to clear error and re-evaluate
-    if (error) return;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      requestGeneration.current += 1;
+      requestAbort.current?.abort();
+    };
+  }, []);
 
+  useEffect(() => {
+    if (error) return;
     if (isFirstEval.current) {
-      // Initial load - evaluate immediately
       isFirstEval.current = false;
-      evaluate();
+      void evaluate();
     } else {
-      // Subsequent changes - debounce
       const timer = setTimeout(evaluate, 100);
       return () => clearTimeout(timer);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fieldValues, schemaName]);
+  }, [fieldValues, schemaName, resourceId, evaluate, error]);
 
-  // Sync fieldValues with availableFields:
-  // 1. Archive removed field values to restoration cache
-  // 2. Clean fieldValues to only include available fields
-  // 3. Initialize new fields (check cache first, then use defaults)
   useEffect(() => {
-    const activeNames = new Set(availableFields.map((f) => f.name));
-
-    setFieldValues((prev) => {
-      const cleaned: Record<string, string | boolean> = {};
+    if (preserveUnavailableValues) return;
+    const activeNames = new Set(availableFields.map((field) => field.name));
+    setFieldValues((previous) => {
+      const cleaned: SchemaValues = {};
       let changed = false;
-
-      // Keep values for fields that are still active
-      // Archive values for fields that are being removed
-      for (const [k, v] of Object.entries(prev)) {
-        if (activeNames.has(k)) {
-          cleaned[k] = v;
-        } else {
-          // Field is being removed
+      for (const [name, value] of Object.entries(previous)) {
+        if (activeNames.has(name)) cleaned[name] = value;
+        else {
           changed = true;
-          if (v !== undefined && v !== "") {
-            // Archive non-empty values before removing
-            restorationCache.current[k] = v;
-          }
+          if (value !== undefined && value !== "") restorationCache.current[name] = value;
         }
       }
-
-      // Initialize new fields
       for (const field of availableFields) {
         if (!(field.name in cleaned)) {
-          changed = true;
-          // Check restoration cache first
           if (field.name in restorationCache.current) {
+            changed = true;
             cleaned[field.name] = restorationCache.current[field.name];
           } else if (field.type === "bool") {
-            // Default bool fields to true
+            changed = true;
             cleaned[field.name] = true;
           }
-          // Other field types start undefined/empty
         }
       }
-
-      // Only return new object if something actually changed
-      return changed ? cleaned : prev;
+      return changed ? cleaned : previous;
     });
-  }, [availableFields]);
+  }, [availableFields, preserveUnavailableValues]);
 
-  /**
-   * Handle value change for a field
-   */
-  const handleFieldChange = useCallback(
-    (fieldName: string, value: string | boolean) => {
-      setFieldValues((prev) => ({ ...prev, [fieldName]: value }));
-    },
-    []
-  );
+  const handleFieldChange = useCallback((fieldName: string, value: SchemaValue) => {
+    setFieldValues((previous) => ({ ...previous, [fieldName]: value }));
+  }, []);
 
-  /**
-   * Reset all fields to initial state
-   */
   const reset = useCallback(() => {
-    setFieldValues({});
+    setFieldValues(initialValuesRef.current);
     restorationCache.current = {};
     setError(null);
   }, []);
 
-  /**
-   * Retry after an error - clears error and re-evaluates
-   */
   const retry = useCallback(() => {
     setError(null);
-    // Trigger re-evaluation by resetting the first-eval flag
     isFirstEval.current = true;
-    // Force a state update to trigger the effect
-    setFieldValues((prev) => ({ ...prev }));
+    setFieldValues((previous) => ({ ...previous }));
   }, []);
 
-  /**
-   * Get field values for form submission (only non-empty values)
-   */
-  const getSubmitValues = useCallback((): Record<string, string | boolean> => {
-    const values: Record<string, string | boolean> = {};
-    for (const [k, v] of Object.entries(fieldValues)) {
-      if (v !== undefined && v !== "") {
-        values[k] = v;
-      }
-    }
-    return values;
-  }, [fieldValues]);
+  const getSubmitValues = useCallback((): SchemaValues => Object.fromEntries(
+    Object.entries(fieldValues).filter(([, value]) => value !== undefined && value !== ""),
+  ), [fieldValues]);
 
   return {
-    // State
     activeMixins,
+    implicitRootMixins,
+    schemaRootMixins,
     fieldValues,
     availableFields,
     loading,
     error,
-
-    // Actions
     handleFieldChange,
     reset,
     retry,
-
-    // Helpers
     getSubmitValues,
   };
+}
+
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }

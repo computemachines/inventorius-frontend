@@ -9,6 +9,10 @@ import { ApiContext } from "../../api-client/api-client";
 import { SkuCreationRequest } from "../../api-client/data-models";
 import { ToastContext } from "../primitives/Toast";
 import { useSchemaForm } from "../../hooks/useSchemaForm";
+import {
+  encodeChangedSchemaValues,
+  persistedMixins,
+} from "../composites/schema-property-values";
 import ItemLabel from "../primitives/ItemLabel";
 import PrintButton from "../composites/PrintButton";
 import FormSection from "../primitives/FormSection";
@@ -19,6 +23,7 @@ import {
 } from "../composites/CodesSection";
 import {
   SchemaFieldList,
+  formatLabel,
   labelClasses,
   inputClasses,
 } from "../composites/SchemaFields";
@@ -50,7 +55,7 @@ export function NewSkuForm() {
   const mountedRef = useRef(true);
   const submissionGenerationRef = useRef(0);
 
-  const schema = useSchemaForm("sku", ["ItemTypeSelector"]);
+  const schema = useSchemaForm("sku", { useSchemaRoots: true });
   const [skuId, setSkuId] = useState("");
   const [codes, setCodes] = useState<CodeEntry[]>([createEmptyCode()]);
   const [persistedSkuId, setPersistedSkuId] = useState<string | null>(null);
@@ -92,11 +97,26 @@ export function NewSkuForm() {
   }, [pendingCommand, schema]);
 
   const buildPayload = (): SkuCreationRequest => {
-    const submitValues = schema.getSubmitValues();
-
-    if (schema.activeMixins.length > 1) {
+    const rawSubmitValues = schema.getSubmitValues();
+    const encoded = encodeChangedSchemaValues(
+      rawSubmitValues,
+      schema.availableFields,
+      Object.keys(rawSubmitValues),
+    );
+    if (encoded.invalidNames.length > 0) {
+      throw new Error(
+        `Enter a complete number for ${encoded.invalidNames.map(formatLabel).join(", ")}.`,
+      );
+    }
+    const submitValues = encoded.values;
+    const mixins = persistedMixins(
+      schema.activeMixins,
+      schema.schemaRootMixins,
+      schema.implicitRootMixins,
+    );
+    if (mixins.length > 0) {
       (submitValues as Record<string, unknown>)._mixins =
-        schema.activeMixins.filter((mixin) => mixin !== "ItemTypeSelector");
+        mixins;
     }
 
     const ownedCodes = codes
@@ -122,8 +142,17 @@ export function NewSkuForm() {
     event.preventDefault();
     setValidationError("");
 
-    const command =
-      pendingCommand.pending ?? pendingCommand.getOrCreate(buildPayload());
+    let command = pendingCommand.pending;
+    if (!command) {
+      try {
+        command = pendingCommand.getOrCreate(buildPayload());
+      } catch (error) {
+        setValidationError(
+          error instanceof Error ? error.message : "Check the schema field values.",
+        );
+        return;
+      }
+    }
     if (!command) {
       setValidationError(
         "This browser cannot preserve a safe retry. Enable session storage before creating a SKU.",
@@ -320,15 +349,21 @@ export function NewSkuForm() {
               onChange={schema.handleFieldChange}
               entityType="sku"
             />
-            {schema.activeMixins.length > 1 && (
+            {persistedMixins(
+              schema.activeMixins,
+              schema.schemaRootMixins,
+              schema.implicitRootMixins,
+            ).length > 0 && (
               <div
                 className="mt-4 py-2 px-3 text-sm text-[#6d635d] bg-[#cdd2d6]/30
                   rounded inline-block"
               >
                 Active:{" "}
-                {schema.activeMixins
-                  .filter((mixin) => mixin !== "ItemTypeSelector")
-                  .join(" → ")}
+                {persistedMixins(
+                  schema.activeMixins,
+                  schema.schemaRootMixins,
+                  schema.implicitRootMixins,
+                ).join(" → ")}
               </div>
             )}
           </FormSection>
