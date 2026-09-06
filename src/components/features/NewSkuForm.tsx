@@ -129,7 +129,6 @@ export function NewSkuForm() {
 
     return {
       ...(explicitId ? { id: explicitId } : {}),
-      name: (submitValues.item_type as string) || "",
       ...(Object.keys(submitValues).length > 0 ? { props: submitValues } : {}),
       ...(ownedCodes.length > 0 ? { owned_codes: ownedCodes } : {}),
       ...(associatedCodes.length > 0

@@ -46,16 +46,26 @@ interface FieldRendererProps {
 
 type FieldRenderer = React.FC<FieldRendererProps>;
 
-const TextRenderer: FieldRenderer = ({ value, onChange, inputId }) => (
-  <input
-    id={inputId}
-    type="text"
-    value={(value as string) ?? ""}
-    onChange={(e) => onChange(e.target.value)}
-    className={inputClasses}
-    autoComplete="off"
-  />
-);
+const TextRenderer: FieldRenderer = ({ field, value, onChange, inputId }) =>
+  field.multiline ? (
+    <textarea
+      id={inputId}
+      rows={4}
+      value={(value as string) ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      className={inputClasses}
+      autoComplete="off"
+    />
+  ) : (
+    <input
+      id={inputId}
+      type="text"
+      value={(value as string) ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      className={inputClasses}
+      autoComplete="off"
+    />
+  );
 
 const NumberRenderer: FieldRenderer = ({ value, onChange, inputId }) => (
   <input

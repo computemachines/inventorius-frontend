@@ -6,6 +6,7 @@ export interface SchemaField {
   options?: string[];
   unit?: string;
   required?: boolean;
+  multiline?: boolean;
 }
 
 export type SchemaValue = unknown;

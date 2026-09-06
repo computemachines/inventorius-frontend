@@ -26,7 +26,7 @@ import PropertiesTable, {
   isUuidString,
 } from "../composites/PropertiesTable";
 import FormSection from "../primitives/FormSection";
-import { labelClasses, inputClasses } from "../composites/SchemaFields";
+import { labelClasses } from "../composites/SchemaFields";
 import { SchemaPropertiesEditor } from "../composites/SchemaPropertiesEditor";
 
 function SkuLocationsSection({ sku }: { sku: ApiSku }) {
@@ -102,7 +102,6 @@ function SkuDetails({
     "live"
   );
   const navigate = useNavigate();
-  const [unsavedName, setUnsavedName] = useState("");
   const [unsavedCodes, setUnsavedCodes] = useState([]);
   const [unsavedProperties, setUnsavedProperties] = useState<Property[]>([]);
   const [unsavedRawProperties, setUnsavedRawProperties] = useState<Record<string, unknown>>({});
@@ -127,7 +126,6 @@ function SkuDetails({
       saveState == "live"
     ) {
       setLoadedSku(data.sku);
-      setUnsavedName(data.sku.state.name);
       const newUnsavedCodes = [
         ...data.sku.state.owned_codes.map((code) => ({
           kind: "owned" as const,
@@ -139,7 +137,16 @@ function SkuDetails({
         })),
       ];
       setUnsavedCodes(newUnsavedCodes);
-      setUnsavedRawProperties({ ...(data.sku.state.props || {}) });
+      const rawProperties: Record<string, unknown> = {
+        ...(data.sku.state.props || {}),
+      };
+      if (
+        !Object.prototype.hasOwnProperty.call(rawProperties, "name") &&
+        data.sku.state.name
+      ) {
+        rawProperties.name = data.sku.state.name;
+      }
+      setUnsavedRawProperties(rawProperties);
       setSchemaPropertiesValid(true);
 
       // Load props into Property objects
@@ -259,23 +266,13 @@ function SkuDetails({
         <PrintButton value={data.sku.state.id} />
       </div>
 
-      {/* Name */}
-      <label htmlFor="sku-name" className={labelClasses}>Name</label>
-      {editable ? (
-        <input
-          id="sku-name"
-          type="text"
-          className={inputClasses + " mb-6"}
-          value={unsavedName}
-          onChange={(e) => {
-            setSaveState("unsaved");
-            setUnsavedName(e.target.value);
-          }}
-        />
-      ) : (
-        <div className="text-[#04151f] mb-6">
-          {unsavedName || <span className="italic text-[#6d635d]">(No name)</span>}
-        </div>
+      {!editable && (
+        <>
+          <label className={labelClasses}>Name</label>
+          <div className="text-[#04151f] mb-6">
+            {data.sku.state.name || data.sku.state.id}
+          </div>
+        </>
       )}
 
 
@@ -338,7 +335,6 @@ function SkuDetails({
                 if (data.sku.kind == "problem") throw Error("impossible");
                 setSaveState("saving");
                 const resp = await api.hydrate(data.sku).update({
-                  name: unsavedName,
                   owned_codes: unsavedCodes
                     .filter(({ kind, value }) => kind == "owned" && value)
                     .map(({ value }) => value),

@@ -201,7 +201,7 @@ function FieldEditor({
   };
 
   return (
-    <div className="flex gap-2 items-center py-2 px-3 bg-white rounded border border-[#cdd2d6] mb-1">
+    <div className="flex flex-wrap gap-2 items-center py-2 px-3 bg-white rounded border border-[#cdd2d6] mb-1">
       <input
         type="text"
         value={field.name}
@@ -236,6 +236,16 @@ function FieldEditor({
           placeholder="unit"
           className={`${adminInputClasses} w-20 py-1.5 text-xs font-mono`}
         />
+      )}
+      {field.type === "text" && (
+        <label className="inline-flex items-center gap-1 text-xs text-[#04151f] whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={field.multiline ?? false}
+            onChange={(e) => onChange({ ...field, multiline: e.target.checked })}
+          />
+          Multiline
+        </label>
       )}
       {(field.type !== "enum" && field.type !== "unit") && <div className="flex-1" />}
       <button
