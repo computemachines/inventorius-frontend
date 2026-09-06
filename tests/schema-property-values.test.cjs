@@ -108,3 +108,16 @@ test("an original empty _mixins array survives an unrelated schema edit", () => 
     { _mixins: [], Description: "new" },
   );
 });
+
+test("flexible measurements preserve lexical values and per-item units", () => {
+  const field = { name: "length", type: "unit" };
+  assert.deepEqual(valueForSchemaInput(field, { value: 36, unit: "yd" }), { value: "36", unit: "yd" });
+  assert.deepEqual(valueForSchemaInput(field, { value: "1.", unit: "mm" }), { value: "1.", unit: "mm" });
+  assert.deepEqual(encodeChangedSchemaValues({ length: { value: "36", unit: " yd " } }, [field], ["length"]), {
+    values: { length: { value: 36, unit: "yd" } }, invalidNames: [],
+  });
+  assert.deepEqual(encodeChangedSchemaValues({ length: { value: "36", unit: "" } }, [field], ["length"]).invalidNames, ["length"]);
+  assert.deepEqual(encodeChangedSchemaValues({ length: { value: "-", unit: "yd" } }, [field], ["length"]).invalidNames, ["length"]);
+  assert.deepEqual(encodeChangedSchemaValues({ length: { value: "", unit: "" } }, [field], ["length"]).values, { length: "" });
+  assert.deepEqual(valuesForSchemaEvaluation({ length: { value: "36", unit: "yd" } }), { length: "36" });
+});

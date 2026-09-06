@@ -121,9 +121,6 @@ function validateField(field: SchemaField, index: number): ValidationError[] {
   if (field.type === "enum" && (!field.options || field.options.length === 0)) {
     errors.push({ path, message: "Enum field requires at least one option" });
   }
-  if (field.type === "unit" && !field.unit?.trim()) {
-    errors.push({ path, message: "Unit field requires a unit symbol" });
-  }
   return errors;
 }
 
@@ -233,7 +230,8 @@ function FieldEditor({
           type="text"
           value={field.unit || ""}
           onChange={(e) => onChange({ ...field, unit: e.target.value })}
-          placeholder="unit"
+          placeholder="Any unit"
+          title="Leave blank to enter the unit on each item"
           className={`${adminInputClasses} w-20 py-1.5 text-xs font-mono`}
         />
       )}

@@ -12,6 +12,7 @@ import { ApiContext, FileUploadState } from "../../api-client/api-client";
 import { AttributeBundle } from "../../api-client/data-models";
 import { SchemaField, SchemaValues } from "../../hooks/useSchemaForm";
 import {
+  SchemaInputValue,
   valueForSchemaInput,
   valueFromSchemaInput,
 } from "./schema-property-values";
@@ -39,8 +40,8 @@ export function formatLabel(name: string): string {
 
 interface FieldRendererProps {
   field: SchemaField;
-  value: string | boolean;
-  onChange: (value: string | boolean) => void;
+  value: SchemaInputValue;
+  onChange: (value: SchemaInputValue) => void;
   inputId: string;
 }
 
@@ -109,22 +110,38 @@ const EnumRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => (
   </select>
 );
 
-const UnitRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => (
-  <div className="flex items-stretch">
-    <input
-      id={inputId}
-      type="text"
-      inputMode="decimal"
-      value={(value as string) ?? ""}
-      onChange={(e) => onChange(e.target.value)}
-      className={`${inputClasses} flex-1 rounded-r-none border-r-0`}
-      placeholder="e.g., 100"
-    />
-    <span className="flex items-center px-3 bg-[#e5e4de] text-[#6d635d] text-sm font-medium border border-[#cdd2d6] border-l-0 rounded-r-md whitespace-nowrap">
-      {field.unit}
-    </span>
-  </div>
-);
+const UnitRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => {
+  const flexible = !field.unit?.trim();
+  const measurement = typeof value === "object" ? value : { value: String(value ?? ""), unit: "" };
+  return (
+    <div className="flex items-stretch min-w-0">
+      <input
+        id={inputId}
+        type="text"
+        inputMode="decimal"
+        value={measurement.value}
+        onChange={(e) => onChange(flexible ? { ...measurement, value: e.target.value } : e.target.value)}
+        className={`${inputClasses} flex-1 min-w-0 rounded-r-none border-r-0`}
+        placeholder="Value"
+      />
+      {flexible ? (
+        <input
+          type="text"
+          aria-label={`${formatLabel(field.name)} unit`}
+          value={measurement.unit}
+          onChange={(e) => onChange({ ...measurement, unit: e.target.value })}
+          placeholder="Unit"
+          title="Enter a unit, for example mm, yd, or kg"
+          className={`${inputClasses.replace("w-full", "w-24")} shrink-0 rounded-l-none bg-[#f5f4ef]`}
+        />
+      ) : (
+        <span className="flex items-center px-3 bg-[#e5e4de] text-[#6d635d] text-sm font-medium border border-[#cdd2d6] border-l-0 rounded-r-md whitespace-nowrap">
+          {field.unit}
+        </span>
+      )}
+    </div>
+  );
+};
 
 type FileMetadata = FileUploadState;
 
@@ -330,8 +347,8 @@ function TypeaheadRenderer({
 
 interface SchemaFieldInputProps {
   field: SchemaField;
-  value: string | boolean;
-  onChange: (name: string, value: string | boolean) => void;
+  value: SchemaInputValue;
+  onChange: (name: string, value: SchemaInputValue) => void;
   /** For typeahead fields: entity type (e.g., "sku", "batch") */
   entityType?: EntityType;
   /** For typeahead fields: API field name for search */

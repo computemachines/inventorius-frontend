@@ -1,4 +1,6 @@
-import { SchemaField, SchemaValue } from "../../hooks/useSchemaForm";
+import type { SchemaField, SchemaValue } from "../../hooks/useSchemaForm";
+
+export type SchemaInputValue = string | boolean | { unit: string; value: string };
 
 export type RawProperties = Record<string, unknown>;
 
@@ -14,8 +16,13 @@ export function valuesForSchemaEvaluation(properties: RawProperties): RawPropert
 export function valueForSchemaInput(
   field: SchemaField,
   storedValue: SchemaValue,
-): string | boolean {
+): SchemaInputValue {
   if (field.type === "bool") return storedValue === true;
+  if (field.type === "unit" && !field.unit?.trim()) {
+    return isUnitValue(storedValue)
+      ? { unit: storedValue.unit, value: String(storedValue.value) }
+      : { unit: "", value: storedValue == null ? "" : String(storedValue) };
+  }
   if (field.type === "unit" && isUnitValue(storedValue)) {
     return String(storedValue.value);
   }
@@ -25,7 +32,7 @@ export function valueForSchemaInput(
 
 export function valueFromSchemaInput(
   _field: SchemaField,
-  inputValue: string | boolean,
+  inputValue: SchemaInputValue,
 ): unknown {
   // Keep the user's lexical input while editing. This preserves intermediate
   // decimal and negative forms such as "1." and "-" in controlled inputs.
@@ -48,13 +55,23 @@ export function encodeChangedSchemaValues(
       continue;
     }
     if (field.type === "number" || field.type === "unit") {
-      const number = typeof value === "number" ? value : Number(value);
+      const rawNumber = isUnitValue(value) ? value.value : value;
+      const unit = field.unit?.trim() || (isUnitValue(value) ? value.unit.trim() : "");
+      if (field.type === "unit" && rawNumber === "" && !unit) {
+        encoded[name] = "";
+        continue;
+      }
+      const number = typeof rawNumber === "number" ? rawNumber : Number(rawNumber);
+      if (field.type === "unit" && (!unit || rawNumber === "")) {
+        invalidNames.push(name);
+        continue;
+      }
       if (!Number.isFinite(number)) {
         invalidNames.push(name);
         continue;
       }
       encoded[name] = field.type === "unit"
-        ? { unit: field.unit ?? "", value: number }
+        ? { unit, value: number }
         : number;
       continue;
     }
@@ -91,11 +108,11 @@ export function overlaySchemaProperties(
   return result;
 }
 
-function isUnitValue(value: unknown): value is { unit: string; value: number } {
+function isUnitValue(value: unknown): value is { unit: string; value: number | string } {
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { unit?: unknown }).unit === "string" &&
-    typeof (value as { value?: unknown }).value === "number"
+    ["number", "string"].includes(typeof (value as { value?: unknown }).value)
   );
 }

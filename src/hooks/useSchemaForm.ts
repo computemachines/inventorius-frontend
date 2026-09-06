@@ -1,3 +1,4 @@
+import { valuesForSchemaEvaluation } from "../components/composites/schema-property-values";
 import { useState, useEffect, useCallback, useRef } from "react";
 
 export interface SchemaField {
@@ -68,7 +69,7 @@ export function useSchemaForm(
         signal: abort.signal,
         body: JSON.stringify({
           active_mixins: initialMixinsRef.current,
-          field_values: fieldValues,
+          field_values: valuesForSchemaEvaluation(fieldValues),
           use_schema_roots: useSchemaRoots,
           ...(resourceId ? { resource_id: resourceId } : {}),
         }),

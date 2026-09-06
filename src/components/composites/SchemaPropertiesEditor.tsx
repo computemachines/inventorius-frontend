@@ -7,7 +7,6 @@ import {
   persistedMixins,
   RawProperties,
   encodeChangedSchemaValues,
-  valuesForSchemaEvaluation,
 } from "./schema-property-values";
 
 interface SchemaPropertiesEditorProps {
@@ -42,7 +41,7 @@ export function SchemaPropertiesEditor({
   );
   const schema = useSchemaForm(schemaName, {
     activeMixins: initialMixins,
-    initialValues: valuesForSchemaEvaluation(properties),
+    initialValues: properties,
     preserveUnavailableValues: true,
     resourceId,
     useSchemaRoots: true,
@@ -124,7 +123,7 @@ export function SchemaPropertiesEditor({
       />
       {invalidNames.length > 0 && (
         <p className="text-[#9e2a2a]" role="alert">
-          Enter a complete number for {invalidNames.join(", ")}.
+          Enter a complete measurement or number for {invalidNames.join(", ")}.
         </p>
       )}
     </>
