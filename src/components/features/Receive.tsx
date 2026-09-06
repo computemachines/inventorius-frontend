@@ -5,6 +5,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { ApiContext } from "../../api-client/api-client";
 import { normalizeInventoriusId } from "../../identifiers";
+import { useAuth } from "../auth/AuthContext";
 import { Code } from "../composites/CodesInput";
 import InventoryBatchSelector from "../composites/InventoryBatchSelector";
 import ItemLabel from "../primitives/ItemLabel";
@@ -27,6 +28,18 @@ export default function Receive() {
   const api = useContext(ApiContext);
   const { setToastContent } = useContext(ToastContext);
   const idempotency = useCommandIdempotency();
+
+  const { session } = useAuth();
+  const principalId = session?.state.principal?.id;
+  const lastBinKey = principalId ? `inventorius:last-received-bin:${principalId}` : null;
+  const [lastReceivedBin, setLastReceivedBin] = useState("");
+  useEffect(() => {
+    let remembered = "";
+    try {
+      if (lastBinKey) remembered = window.localStorage.getItem(lastBinKey) || "";
+    } catch { /* Receiving still works when browser storage is unavailable. */ }
+    setLastReceivedBin(isBinId(remembered) ? remembered : "");
+  }, [lastBinKey]);
 
   const [binId, setBinId] = useState("");
   const [itemEvidence, setItemEvidence] = useState<Code[]>(emptyEvidence);
@@ -154,6 +167,10 @@ export default function Receive() {
       // Keep one physical destination, but only discard a command after its
       // response confirms success. Failed/lost responses retain this exact
       // payload and key for a safe retry.
+      setLastReceivedBin(destination);
+      try {
+        if (lastBinKey) window.localStorage.setItem(lastBinKey, destination);
+      } catch { /* A storage failure must not turn a completed receipt into an error. */ }
       idempotency.clear();
       setBinId(destination);
       setItemEvidence(emptyEvidence);
@@ -211,7 +228,7 @@ export default function Receive() {
         value={binId}
         onChange={(event) => setBinId(event.target.value)}
         onBlur={() => setBinId(normalizeInventoriusId(binId))}
-        placeholder="BIN000001"
+        placeholder={lastReceivedBin || "Scan or enter a bin"}
         spellCheck={false}
         className={`${inputClasses} mb-5`}
       />

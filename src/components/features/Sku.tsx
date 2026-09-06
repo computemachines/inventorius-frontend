@@ -27,6 +27,7 @@ import PropertiesTable, {
 } from "../composites/PropertiesTable";
 import FormSection from "../primitives/FormSection";
 import { labelClasses } from "../composites/SchemaFields";
+import { useAuth } from "../auth/AuthContext";
 import { SchemaPropertiesEditor } from "../composites/SchemaPropertiesEditor";
 
 function SkuLocationsSection({ sku }: { sku: ApiSku }) {
@@ -51,6 +52,7 @@ function SkuLocationsSection({ sku }: { sku: ApiSku }) {
 }
 
 function SkuBatchesSection({ sku }: { sku: ApiSku }) {
+  const { hasOperation } = useAuth();
   const { data, frontloadMeta } = useFrontload(
     `sku-batches-component:${sku.state.id}`,
     async () => ({ skuBatches: await sku.batches() })
@@ -80,6 +82,14 @@ function SkuBatchesSection({ sku }: { sku: ApiSku }) {
         )
       ) : (
         <span className="text-red-600">Problem loading batches.</span>
+      )}
+      {hasOperation("create-batch") && (
+        <Link
+          to={`/new/batch?parent=${encodeURIComponent(sku.state.id)}`}
+          className="mt-3 inline-flex rounded-md bg-[#0c3764] px-4 py-2 font-semibold text-white hover:bg-[#082441]"
+        >
+          Define batch
+        </Link>
       )}
     </FormSection>
   );
