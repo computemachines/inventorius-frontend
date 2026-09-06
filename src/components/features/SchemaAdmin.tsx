@@ -259,7 +259,7 @@ function TriggerEditor({
   const valueIsArray = trigger.op === "in";
 
   return (
-    <span className="inline-flex gap-2 items-center">
+    <span className="inline-flex flex-wrap min-w-0 gap-2 items-center">
       <input
         type="text"
         value={trigger.field}
@@ -330,12 +330,12 @@ function ChildMixinEditor({
   availableMixins: string[];
 }) {
   return (
-    <div className="flex gap-3 items-center py-2 px-3 bg-white rounded border border-[#cdd2d6] mb-1">
+    <div className="flex flex-wrap gap-3 items-center py-2 px-3 bg-white rounded border border-[#cdd2d6] mb-1">
       <span className="text-[#082441] font-bold">→</span>
       <select
         value={child.mixin}
         onChange={(e) => onChange({ ...child, mixin: e.target.value })}
-        className={`${selectClasses} min-w-[160px] py-1.5 text-sm`}
+        className={`${selectClasses} w-40 min-w-0 max-w-full py-1.5 text-sm`}
       >
         <option value="">Select mixin...</option>
         {availableMixins.map((m) => (
@@ -350,7 +350,9 @@ function ChildMixinEditor({
       <button
         onClick={onDelete}
         className="w-6 h-6 flex items-center justify-center text-[#6d635d] hover:text-red-600 hover:bg-red-50 rounded transition-colors ml-auto flex-shrink-0"
-        title="Remove trigger"
+        type="button"
+        aria-label="Remove child rule"
+        title="Remove child rule"
       >
         ×
       </button>
