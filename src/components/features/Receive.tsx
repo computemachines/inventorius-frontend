@@ -78,7 +78,7 @@ export default function Receive() {
     event.preventDefault();
     setValidationError("");
 
-    const destination = normalizeInventoriusId(binId);
+    const destination = normalizeInventoriusId(binId.trim() || lastReceivedBin);
     const count = Number(quantity);
     const chosenBatchId = selectedBatchId;
     const chosenSkuId = selectedSkuId;
@@ -229,9 +229,14 @@ export default function Receive() {
         onChange={(event) => setBinId(event.target.value)}
         onBlur={() => setBinId(normalizeInventoriusId(binId))}
         placeholder={lastReceivedBin || "Scan or enter a bin"}
+        aria-describedby={lastReceivedBin ? "receive-bin-hint" : undefined}
         spellCheck={false}
         className={`${inputClasses} mb-5`}
       />
+
+      {lastReceivedBin && <p id="receive-bin-hint" className="text-sm text-[#6d635d] -mt-3 mb-5">
+        Leave blank to receive into {lastReceivedBin}, your last receiving bin.
+      </p>}
 
       <InventoryBatchSelector
         id="receive-item-evidence"
