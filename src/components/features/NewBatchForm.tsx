@@ -18,6 +18,7 @@ import { ToastContext } from "../primitives/Toast";
 import { useSchemaForm } from "../../hooks/useSchemaForm";
 import {
   encodeChangedSchemaValues,
+  schemaInputError,
   persistedMixins,
 } from "../composites/schema-property-values";
 import ItemLabel from "../primitives/ItemLabel";
@@ -156,7 +157,7 @@ export function NewBatchForm() {
     );
     if (encoded.invalidNames.length > 0) {
       throw new Error(
-        `Enter a complete number for ${encoded.invalidNames.map(formatLabel).join(", ")}.`,
+        schemaInputError(encoded.invalidNames, schema.availableFields),
       );
     }
     const submitValues = encoded.values;

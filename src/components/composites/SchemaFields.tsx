@@ -1,3 +1,4 @@
+import { ItemReferenceInput, ItemReferenceListInput } from "./ItemReferenceInput";
 // src/components/composites/SchemaFields.tsx
 // Fully human reviewed: NO
 // Progress: NONE
@@ -112,7 +113,7 @@ const EnumRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => (
 
 const UnitRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => {
   const flexible = !field.unit?.trim();
-  const measurement = typeof value === "object" ? value : { value: String(value ?? ""), unit: "" };
+  const measurement = typeof value === "object" && !Array.isArray(value) ? value : { value: String(value ?? ""), unit: "" };
   return (
     <div className="flex items-stretch min-w-0">
       <input
@@ -277,6 +278,8 @@ const fieldRenderers: Record<string, FieldRenderer> = {
   bool: BoolRenderer,
   enum: EnumRenderer,
   unit: UnitRenderer,
+  "item-reference": ({ value, onChange, inputId }) => <ItemReferenceInput id={inputId} value={typeof value === "string" ? value : ""} onChange={onChange} />,
+  "item-reference-list": ({ field, value, onChange, inputId }) => <ItemReferenceListInput id={inputId} label={formatLabel(field.name)} values={Array.isArray(value) ? value : []} onChange={onChange} />,
   file: FileRenderer,
 };
 

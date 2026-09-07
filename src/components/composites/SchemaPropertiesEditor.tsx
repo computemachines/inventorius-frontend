@@ -7,6 +7,7 @@ import {
   persistedMixins,
   RawProperties,
   encodeChangedSchemaValues,
+  schemaInputError,
 } from "./schema-property-values";
 
 interface SchemaPropertiesEditorProps {
@@ -123,7 +124,7 @@ export function SchemaPropertiesEditor({
       />
       {invalidNames.length > 0 && (
         <p className="text-[#9e2a2a]" role="alert">
-          Enter a complete measurement or number for {invalidNames.join(", ")}.
+          {schemaInputError(invalidNames, schema.availableFields)}
         </p>
       )}
     </>

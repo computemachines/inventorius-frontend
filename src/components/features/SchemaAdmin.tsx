@@ -217,6 +217,8 @@ function FieldEditor({
         <option value="bool">bool</option>
         <option value="unit">unit</option>
         <option value="file">file</option>
+        <option value="item-reference">item reference</option>
+        <option value="item-reference-list">item reference list</option>
       </select>
       {field.type === "enum" && (
         <EnumOptionsInput

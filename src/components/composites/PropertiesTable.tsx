@@ -1,3 +1,5 @@
+import ItemLabel from "../primitives/ItemLabel";
+import { displayedItemReferences } from "./item-references";
 // src/components/composites/PropertiesTable.tsx
 // Fully human reviewed: NO
 // Progress: NONE
@@ -223,6 +225,10 @@ function FileValueDisplay({ fileId }: { fileId: string }) {
 }
 
 function PropertyValueDisplay({ property }: { property: Property }) {
+  if (property.typed.kind === "string") {
+    const references = displayedItemReferences(property.typed.value);
+    if (references) return <span className="inline-flex flex-wrap gap-x-3 gap-y-1">{references.map((id, index) => <ItemLabel key={`${id}-${index}`} label={id} />)}</span>;
+  }
   switch (property.typed.kind) {
     case "file":
       return <FileValueDisplay fileId={property.typed.value} />;

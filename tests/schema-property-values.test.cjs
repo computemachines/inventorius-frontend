@@ -121,3 +121,18 @@ test("flexible measurements preserve lexical values and per-item units", () => {
   assert.deepEqual(encodeChangedSchemaValues({ length: { value: "", unit: "" } }, [field], ["length"]).values, { length: "" });
   assert.deepEqual(valuesForSchemaEvaluation({ length: { value: "36", unit: "yd" } }), { length: "36" });
 });
+
+test("item references preserve ID arrays and reject lookup text or bin IDs", () => {
+  const single = { name: "tool", type: "item-reference" };
+  const list = { name: "related", type: "item-reference-list" };
+  assert.deepEqual(encodeChangedSchemaValues({ tool: "sku3", related: ["bat2", "SKU3", "bat2", ""] }, [single, list], ["tool", "related"]), {
+    values: { tool: "SKU000003", related: ["BAT000002", "SKU000003"] }, invalidNames: [],
+  });
+  assert.deepEqual(valueForSchemaInput(list, ["SKU000003", "BAT000002"]), ["SKU000003", "BAT000002"]);
+  assert.deepEqual(encodeChangedSchemaValues({ tool: "BIN000001", related: ["some tool"] }, [single, list], ["tool", "related"]).invalidNames, ["tool", "related"]);
+  assert.deepEqual(encodeChangedSchemaValues({ related: [] }, [list], ["related"]).values, { related: [] });
+  const { displayedItemReferences } = require("../src/components/composites/item-references");
+  assert.deepEqual(displayedItemReferences('["SKU000003","BAT000002"]'), ["SKU000003", "BAT000002"]);
+  assert.equal(displayedItemReferences('[null]'), null);
+  assert.equal(displayedItemReferences('["text","SKU000003"]'), null);
+});
