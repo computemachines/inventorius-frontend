@@ -83,6 +83,11 @@ interface TriggerCondition {
   value: unknown;
 }
 
+// An empty conjunction is true, using the existing API trigger representation.
+function isAlwaysTrigger(trigger: TriggerCondition): boolean {
+  return trigger.op === "and" && Array.isArray(trigger.value) && trigger.value.length === 0;
+}
+
 interface ChildMixin {
   mixin: string;
   trigger: TriggerCondition;
@@ -121,9 +126,6 @@ function validateField(field: SchemaField, index: number): ValidationError[] {
   if (field.type === "enum" && (!field.options || field.options.length === 0)) {
     errors.push({ path, message: "Enum field requires at least one option" });
   }
-  if (field.type === "unit" && !field.unit?.trim()) {
-    errors.push({ path, message: "Unit field requires a unit symbol" });
-  }
   return errors;
 }
 
@@ -151,7 +153,7 @@ function validateMixin(mixin: Mixin, allMixinNames: string[]): ValidationError[]
     } else if (!allMixinNames.includes(child.mixin)) {
       errors.push({ path: `child[${i}]`, message: `Unknown mixin: ${child.mixin}` });
     }
-    if (!child.trigger.field.trim()) {
+    if (!isAlwaysTrigger(child.trigger) && !child.trigger.field.trim()) {
       errors.push({ path: `child[${i}].trigger`, message: "Trigger field required" });
     }
   });
@@ -201,7 +203,7 @@ function FieldEditor({
   };
 
   return (
-    <div className="flex gap-2 items-center py-2 px-3 bg-white rounded border border-[#cdd2d6] mb-1">
+    <div className="flex flex-wrap gap-2 items-center py-2 px-3 bg-white rounded border border-[#cdd2d6] mb-1">
       <input
         type="text"
         value={field.name}
@@ -220,6 +222,8 @@ function FieldEditor({
         <option value="bool">bool</option>
         <option value="unit">unit</option>
         <option value="file">file</option>
+        <option value="item-reference">item reference</option>
+        <option value="item-reference-list">item reference list</option>
       </select>
       {field.type === "enum" && (
         <EnumOptionsInput
@@ -233,9 +237,20 @@ function FieldEditor({
           type="text"
           value={field.unit || ""}
           onChange={(e) => onChange({ ...field, unit: e.target.value })}
-          placeholder="unit"
+          placeholder="Any unit"
+          title="Leave blank to enter the unit on each item"
           className={`${adminInputClasses} w-20 py-1.5 text-xs font-mono`}
         />
+      )}
+      {field.type === "text" && (
+        <label className="inline-flex items-center gap-1 text-xs text-[#04151f] whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={field.multiline ?? false}
+            onChange={(e) => onChange({ ...field, multiline: e.target.checked })}
+          />
+          Multiline
+        </label>
       )}
       {(field.type !== "enum" && field.type !== "unit") && <div className="flex-1" />}
       <button
@@ -259,7 +274,7 @@ function TriggerEditor({
   const valueIsArray = trigger.op === "in";
 
   return (
-    <span className="inline-flex gap-2 items-center">
+    <span className="inline-flex flex-wrap min-w-0 gap-2 items-center">
       <input
         type="text"
         value={trigger.field}
@@ -330,27 +345,44 @@ function ChildMixinEditor({
   availableMixins: string[];
 }) {
   return (
-    <div className="flex gap-3 items-center py-2 px-3 bg-white rounded border border-[#cdd2d6] mb-1">
+    <div className="flex flex-wrap gap-3 items-center py-2 px-3 bg-white rounded border border-[#cdd2d6] mb-1">
       <span className="text-[#082441] font-bold">→</span>
       <select
         value={child.mixin}
         onChange={(e) => onChange({ ...child, mixin: e.target.value })}
-        className={`${selectClasses} min-w-[160px] py-1.5 text-sm`}
+        className={`${selectClasses} w-40 min-w-0 max-w-full py-1.5 text-sm`}
       >
         <option value="">Select mixin...</option>
         {availableMixins.map((m) => (
           <option key={m} value={m}>{m}</option>
         ))}
       </select>
-      <span className="text-[#6d635d] text-sm font-medium">when</span>
-      <TriggerEditor
-        trigger={child.trigger}
-        onChange={(t) => onChange({ ...child, trigger: t })}
-      />
+      <select
+        aria-label="Child activation"
+        value={isAlwaysTrigger(child.trigger) ? "always" : "when"}
+        onChange={(e) => onChange({
+          ...child,
+          trigger: e.target.value === "always"
+            ? { field: "", op: "and", value: [] }
+            : { field: "", op: "eq", value: "" },
+        })}
+        className={`${selectClasses} w-28 py-1.5 text-sm`}
+      >
+        <option value="when">When</option>
+        <option value="always">Always</option>
+      </select>
+      {!isAlwaysTrigger(child.trigger) && (
+        <TriggerEditor
+          trigger={child.trigger}
+          onChange={(t) => onChange({ ...child, trigger: t })}
+        />
+      )}
       <button
         onClick={onDelete}
         className="w-6 h-6 flex items-center justify-center text-[#6d635d] hover:text-red-600 hover:bg-red-50 rounded transition-colors ml-auto flex-shrink-0"
-        title="Remove trigger"
+        type="button"
+        aria-label="Remove child rule"
+        title="Remove child rule"
       >
         ×
       </button>
@@ -456,7 +488,7 @@ function MixinEditor({
           {/* Children */}
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <label className={`${labelClasses} mb-0`}>Children (triggers)</label>
+              <label className={`${labelClasses} mb-0`}>Children</label>
               <button onClick={addChild} className={`${btnSecondary} py-0.5 px-2 text-xs`}>+ Add</button>
             </div>
             <div className="flex flex-col gap-1">

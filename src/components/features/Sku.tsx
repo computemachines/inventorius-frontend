@@ -26,7 +26,9 @@ import PropertiesTable, {
   isUuidString,
 } from "../composites/PropertiesTable";
 import FormSection from "../primitives/FormSection";
-import { labelClasses, inputClasses } from "../composites/SchemaFields";
+import { labelClasses } from "../composites/SchemaFields";
+import { useAuth } from "../auth/AuthContext";
+import { SchemaPropertiesEditor } from "../composites/SchemaPropertiesEditor";
 
 function SkuLocationsSection({ sku }: { sku: ApiSku }) {
   const { data, frontloadMeta } = useFrontload(
@@ -50,6 +52,7 @@ function SkuLocationsSection({ sku }: { sku: ApiSku }) {
 }
 
 function SkuBatchesSection({ sku }: { sku: ApiSku }) {
+  const { hasOperation } = useAuth();
   const { data, frontloadMeta } = useFrontload(
     `sku-batches-component:${sku.state.id}`,
     async () => ({ skuBatches: await sku.batches() })
@@ -80,6 +83,14 @@ function SkuBatchesSection({ sku }: { sku: ApiSku }) {
       ) : (
         <span className="text-red-600">Problem loading batches.</span>
       )}
+      {hasOperation("create-batch") && (
+        <Link
+          to={`/new/batch?parent=${encodeURIComponent(sku.state.id)}`}
+          className="mt-3 inline-flex rounded-md bg-[#0c3764] px-4 py-2 font-semibold text-white hover:bg-[#082441]"
+        >
+          Define batch
+        </Link>
+      )}
     </FormSection>
   );
 }
@@ -101,9 +112,10 @@ function SkuDetails({
     "live"
   );
   const navigate = useNavigate();
-  const [unsavedName, setUnsavedName] = useState("");
   const [unsavedCodes, setUnsavedCodes] = useState([]);
   const [unsavedProperties, setUnsavedProperties] = useState<Property[]>([]);
+  const [unsavedRawProperties, setUnsavedRawProperties] = useState<Record<string, unknown>>({});
+  const [schemaPropertiesValid, setSchemaPropertiesValid] = useState(true);
   const [loadedSku, setLoadedSku] = useState<ApiSku | null>(null);
   const api = useContext(ApiContext);
 
@@ -124,7 +136,6 @@ function SkuDetails({
       saveState == "live"
     ) {
       setLoadedSku(data.sku);
-      setUnsavedName(data.sku.state.name);
       const newUnsavedCodes = [
         ...data.sku.state.owned_codes.map((code) => ({
           kind: "owned" as const,
@@ -136,6 +147,17 @@ function SkuDetails({
         })),
       ];
       setUnsavedCodes(newUnsavedCodes);
+      const rawProperties: Record<string, unknown> = {
+        ...(data.sku.state.props || {}),
+      };
+      if (
+        !Object.prototype.hasOwnProperty.call(rawProperties, "name") &&
+        data.sku.state.name
+      ) {
+        rawProperties.name = data.sku.state.name;
+      }
+      setUnsavedRawProperties(rawProperties);
+      setSchemaPropertiesValid(true);
 
       // Load props into Property objects
       setUnsavedProperties(
@@ -153,7 +175,7 @@ function SkuDetails({
             } else {
               typed = { kind: "string", value: value };
             }
-          } else if (typeof value == "object") {
+          } else if (typeof value == "object" && value !== null) {
             if ("unit" in value && "value" in value) {
               const physical = new Unit1(
                 value as { unit: string; value: number }
@@ -163,7 +185,7 @@ function SkuDetails({
                   typed = { kind: "currency", value: physical.value };
                   break;
                 default:
-                  throw new Error("Unsupported api unit type: " + physical.unit);
+                  typed = { kind: "string", value: JSON.stringify(value) };
               }
             } else {
               // Generic object - stringify it
@@ -254,23 +276,13 @@ function SkuDetails({
         <PrintButton value={data.sku.state.id} />
       </div>
 
-      {/* Name */}
-      <label htmlFor="sku-name" className={labelClasses}>Name</label>
-      {editable ? (
-        <input
-          id="sku-name"
-          type="text"
-          className={inputClasses + " mb-6"}
-          value={unsavedName}
-          onChange={(e) => {
-            setSaveState("unsaved");
-            setUnsavedName(e.target.value);
-          }}
-        />
-      ) : (
-        <div className="text-[#04151f] mb-6">
-          {unsavedName || <span className="italic text-[#6d635d]">(No name)</span>}
-        </div>
+      {!editable && (
+        <>
+          <label className={labelClasses}>Name</label>
+          <div className="text-[#04151f] mb-6">
+            {data.sku.state.name || data.sku.state.id}
+          </div>
+        </>
       )}
 
 
@@ -279,11 +291,20 @@ function SkuDetails({
 
       {/* Properties */}
       <FormSection title="Properties" bgAccent="bg-accent">
-        {unsavedProperties.length == 0 && !editable ? (
+        {editable ? (
+          <SchemaPropertiesEditor
+            schemaName="sku"
+            resourceId={data.sku.state.id}
+            properties={unsavedRawProperties}
+            onChange={setUnsavedRawProperties}
+            onDirty={() => setSaveState("unsaved")}
+            onValidityChange={setSchemaPropertiesValid}
+          />
+        ) : unsavedProperties.length == 0 ? (
           <span className="text-[#6d635d] italic">None</span>
         ) : (
           <PropertiesTable
-            editable={editable}
+            editable={false}
             properties={unsavedProperties}
             setProperties={(properties) => {
               setSaveState("unsaved");
@@ -324,14 +345,13 @@ function SkuDetails({
                 if (data.sku.kind == "problem") throw Error("impossible");
                 setSaveState("saving");
                 const resp = await api.hydrate(data.sku).update({
-                  name: unsavedName,
                   owned_codes: unsavedCodes
                     .filter(({ kind, value }) => kind == "owned" && value)
                     .map(({ value }) => value),
                   associated_codes: unsavedCodes
                     .filter(({ kind, value }) => kind == "associated" && value)
                     .map(({ value }) => value),
-                  props: api_props_from_properties(unsavedProperties),
+                  props: unsavedRawProperties,
                 });
 
                 if (resp.kind == "problem") {
@@ -354,7 +374,7 @@ function SkuDetails({
                   navigate(generatePath("/sku/:id", { id }));
                 }
               }}
-              disabled={saveState == "saving"}
+              disabled={saveState == "saving" || !schemaPropertiesValid}
               className="flex-1 py-3 px-6 text-base font-semibold bg-[#26532b] text-white rounded-md hover:bg-[#1e4423] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
             >
               {saveState == "saving" ? "Saving..." : "Save Changes"}

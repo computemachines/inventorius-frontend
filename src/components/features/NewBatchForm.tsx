@@ -16,6 +16,11 @@ import {
 } from "../../api-client/data-models";
 import { ToastContext } from "../primitives/Toast";
 import { useSchemaForm } from "../../hooks/useSchemaForm";
+import {
+  encodeChangedSchemaValues,
+  schemaInputError,
+  persistedMixins,
+} from "../composites/schema-property-values";
 import ItemLabel from "../primitives/ItemLabel";
 import PrintButton from "../composites/PrintButton";
 import FormSection from "../primitives/FormSection";
@@ -26,6 +31,7 @@ import {
 } from "../composites/CodesSection";
 import {
   SchemaFieldList,
+  formatLabel,
   labelClasses,
   inputClasses,
 } from "../composites/SchemaFields";
@@ -70,7 +76,7 @@ export function NewBatchForm() {
   const mountedRef = useRef(true);
   const submissionGenerationRef = useRef(0);
 
-  const schema = useSchemaForm("batch", ["SourceSelector"]);
+  const schema = useSchemaForm("batch", { useSchemaRoots: true });
   const [batchId, setBatchId] = useState("");
   const [parentSkuId, setParentSkuId] = useState(queryParentSkuId);
   const [parentSkuName, setParentSkuName] = useState("");
@@ -143,11 +149,26 @@ export function NewBatchForm() {
   }, [data?.parentSku, pendingCommand, queryParentSkuId, schema]);
 
   const buildPayload = (): BatchCreationRequest => {
-    const submitValues = schema.getSubmitValues();
-
-    if (schema.activeMixins.length > 1) {
+    const rawSubmitValues = schema.getSubmitValues();
+    const encoded = encodeChangedSchemaValues(
+      rawSubmitValues,
+      schema.availableFields,
+      Object.keys(rawSubmitValues),
+    );
+    if (encoded.invalidNames.length > 0) {
+      throw new Error(
+        schemaInputError(encoded.invalidNames, schema.availableFields),
+      );
+    }
+    const submitValues = encoded.values;
+    const mixins = persistedMixins(
+      schema.activeMixins,
+      schema.schemaRootMixins,
+      schema.implicitRootMixins,
+    );
+    if (mixins.length > 0) {
       (submitValues as Record<string, unknown>)._mixins =
-        schema.activeMixins.filter((mixin) => mixin !== "SourceSelector");
+        mixins;
     }
 
     const ownedCodes = codes
@@ -183,8 +204,17 @@ export function NewBatchForm() {
       return;
     }
 
-    const command =
-      pendingCommand.pending ?? pendingCommand.getOrCreate(buildPayload());
+    let command = pendingCommand.pending;
+    if (!command) {
+      try {
+        command = pendingCommand.getOrCreate(buildPayload());
+      } catch (error) {
+        setValidationError(
+          error instanceof Error ? error.message : "Check the schema field values.",
+        );
+        return;
+      }
+    }
     if (!command) {
       setValidationError(
         "This browser cannot preserve a safe retry. Enable session storage before creating a batch.",
@@ -418,15 +448,21 @@ export function NewBatchForm() {
                 onChange={schema.handleFieldChange}
                 entityType="batch"
               />
-              {schema.activeMixins.length > 1 && (
+              {persistedMixins(
+                schema.activeMixins,
+                schema.schemaRootMixins,
+                schema.implicitRootMixins,
+              ).length > 0 && (
                 <div
                   className="mt-4 py-2 px-3 text-sm text-[#6d635d]
                     bg-[#cdd2d6]/30 rounded inline-block"
                 >
                   Source:{" "}
-                  {schema.activeMixins
-                    .filter((mixin) => mixin !== "SourceSelector")
-                    .join(" → ")}
+                  {persistedMixins(
+                    schema.activeMixins,
+                    schema.schemaRootMixins,
+                    schema.implicitRootMixins,
+                  ).join(" → ")}
                 </div>
               )}
             </>

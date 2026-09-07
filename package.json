@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test:api-client": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' node -r ts-node/register --test tests/api-client-*.test.cjs",
     "test:release-manifest": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\"}' node -r ts-node/register --test tests/release-manifest.test.cjs",
+    "test:schema-properties": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' node -r ts-node/register --test tests/schema-property-values.test.cjs",
     "server:dev": "node dist/server.bundle.js -p 8080 --dev",
     "server:only": "node dist/server.bundle.js -p 8080 --dev --noclient"
   },

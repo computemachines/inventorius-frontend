@@ -5,6 +5,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { ApiContext } from "../../api-client/api-client";
 import { normalizeInventoriusId } from "../../identifiers";
+import { useAuth } from "../auth/AuthContext";
 import { Code } from "../composites/CodesInput";
 import InventoryBatchSelector from "../composites/InventoryBatchSelector";
 import ItemLabel from "../primitives/ItemLabel";
@@ -21,12 +22,6 @@ import {
 
 const emptyEvidence: Code[] = [{ value: "", kind: "associated" }];
 
-function dedupedObservedCodes(evidence: Code[]): string[] {
-  return Array.from(
-    new Set(evidence.map(({ value }) => value.trim()).filter(Boolean)),
-  ).sort();
-}
-
 export default function Receive() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -34,12 +29,22 @@ export default function Receive() {
   const { setToastContent } = useContext(ToastContext);
   const idempotency = useCommandIdempotency();
 
+  const { session } = useAuth();
+  const principalId = session?.state.principal?.id;
+  const lastBinKey = principalId ? `inventorius:last-received-bin:${principalId}` : null;
+  const [lastReceivedBin, setLastReceivedBin] = useState("");
+  useEffect(() => {
+    let remembered = "";
+    try {
+      if (lastBinKey) remembered = window.localStorage.getItem(lastBinKey) || "";
+    } catch { /* Receiving still works when browser storage is unavailable. */ }
+    setLastReceivedBin(isBinId(remembered) ? remembered : "");
+  }, [lastBinKey]);
+
   const [binId, setBinId] = useState("");
   const [itemEvidence, setItemEvidence] = useState<Code[]>(emptyEvidence);
   const [selectedBatchId, setSelectedBatchId] = useState("");
   const [selectedSkuId, setSelectedSkuId] = useState("");
-  const [observedEvidence, setObservedEvidence] =
-    useState<Code[]>(emptyEvidence);
   const [quantity, setQuantity] = useState("1");
   const [validationError, setValidationError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -63,7 +68,6 @@ export default function Receive() {
     setItemEvidence([{ value: initialBatch, kind: "associated" }]);
     setSelectedBatchId("");
     setSelectedSkuId("");
-    setObservedEvidence(emptyEvidence);
     setQuantity(initialQuantity);
     requestAnimationFrame(() => {
       (initialBin ? itemEvidenceInput : binInput).current?.focus();
@@ -78,7 +82,6 @@ export default function Receive() {
     const count = Number(quantity);
     const chosenBatchId = selectedBatchId;
     const chosenSkuId = selectedSkuId;
-    const observedCodes = dedupedObservedCodes(observedEvidence);
     if (!isBinId(destination)) {
       setValidationError("Scan or enter a destination BIN label.");
       binInput.current?.focus();
@@ -105,7 +108,6 @@ export default function Receive() {
           quantity: count,
           unit: "each" as const,
           location_id: destination,
-          ...(observedCodes.length ? { observed_codes: observedCodes } : {}),
         };
         const response = await api.postInventoryOperation(
           command,
@@ -137,7 +139,6 @@ export default function Receive() {
           bin_id: destination,
           quantity: count,
           unit: "each" as const,
-          ...(observedCodes.length ? { observed_codes: observedCodes } : {}),
         };
         const response = await api.intake(payload, idempotency.keyFor(payload));
         if (response.kind === "problem") {
@@ -166,12 +167,15 @@ export default function Receive() {
       // Keep one physical destination, but only discard a command after its
       // response confirms success. Failed/lost responses retain this exact
       // payload and key for a safe retry.
+      setLastReceivedBin(destination);
+      try {
+        if (lastBinKey) window.localStorage.setItem(lastBinKey, destination);
+      } catch { /* A storage failure must not turn a completed receipt into an error. */ }
       idempotency.clear();
       setBinId(destination);
       setItemEvidence(emptyEvidence);
       setSelectedBatchId("");
       setSelectedSkuId("");
-      setObservedEvidence(emptyEvidence);
       setQuantity("1");
       navigate(`/receive?into=${encodeURIComponent(destination)}`, {
         replace: true,
@@ -224,7 +228,7 @@ export default function Receive() {
         value={binId}
         onChange={(event) => setBinId(event.target.value)}
         onBlur={() => setBinId(normalizeInventoriusId(binId))}
-        placeholder="BIN000001"
+        placeholder={lastReceivedBin || "Scan or enter a bin"}
         spellCheck={false}
         className={`${inputClasses} mb-5`}
       />
@@ -238,8 +242,6 @@ export default function Receive() {
         setSelectedBatchId={setSelectedBatchId}
         selectedSkuId={selectedSkuId}
         setSelectedSkuId={setSelectedSkuId}
-        observedEvidence={observedEvidence}
-        setObservedEvidence={setObservedEvidence}
         unknownAction={
           <Link className="font-semibold underline" to={captureHref}>
             Use Quick Capture instead.

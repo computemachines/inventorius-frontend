@@ -40,6 +40,7 @@ import PropertiesTable, {
 import WarnModal from "../primitives/WarnModal";
 import FormSection from "../primitives/FormSection";
 import { labelClasses, inputClasses } from "../composites/SchemaFields";
+import { SchemaPropertiesEditor } from "../composites/SchemaPropertiesEditor";
 import { useAuth } from "../auth/AuthContext";
 import QuantityHoldings from "./QuantityHoldings";
 
@@ -60,6 +61,8 @@ function BatchDetails({
   const [unsavedName, setUnsavedName] = useState("");
   const [unsavedCodes, setUnsavedCodes] = useState<Code[]>([]);
   const [unsavedProperties, setUnsavedProperties] = useState<Property[]>([]);
+  const [unsavedRawProperties, setUnsavedRawProperties] = useState<Record<string, unknown>>({});
+  const [schemaPropertiesValid, setSchemaPropertiesValid] = useState(true);
   const [loadedBatch, setLoadedBatch] = useState<ApiBatch | null>(null);
 
   const api = useContext(ApiContext);
@@ -101,6 +104,7 @@ function BatchDetails({
     ) {
       setLoadedBatch(data.batch);
       // reset unsaved data
+      setUnsavedParentSkuId(data.batch.state.sku_id || "");
       setUnsavedName(data.batch.state.name);
       setUnsavedCodes([
         ...(data.batch.state.owned_codes || []).map((value) => ({
@@ -112,6 +116,8 @@ function BatchDetails({
           kind: "associated" as const,
         })),
       ]);
+      setUnsavedRawProperties({ ...(data.batch.state.props || {}) });
+      setSchemaPropertiesValid(true);
       setUnsavedProperties(
         Object.entries(data.batch.state.props || {}).map(([name, value]) => {
           let typed;
@@ -133,7 +139,7 @@ function BatchDetails({
                 value: value,
               };
             }
-          } else if (typeof value == "object") {
+          } else if (typeof value == "object" && value !== null) {
             if ("unit" in value && "value" in value) {
               const physical = new Unit1(
                 value as { unit: string; value: number }
@@ -152,7 +158,7 @@ function BatchDetails({
               typed = { kind: "string", value: JSON.stringify(value) };
             }
           } else {
-            throw new Error("Unsupported api type");
+            typed = { kind: "string", value: String(value) };
           }
           return new Property({ name, typed: typed });
         })
@@ -331,11 +337,20 @@ function BatchDetails({
 
       {/* Properties */}
       <FormSection title="Additional Properties" bgAccent="bg-accent">
-        {unsavedProperties.length == 0 && !editable ? (
+        {editable ? (
+          <SchemaPropertiesEditor
+            schemaName="batch"
+            resourceId={data.batch.state.id}
+            properties={unsavedRawProperties}
+            onChange={setUnsavedRawProperties}
+            onDirty={() => setSaveState("unsaved")}
+            onValidityChange={setSchemaPropertiesValid}
+          />
+        ) : unsavedProperties.length == 0 ? (
           <span className="text-[#6d635d] italic">None</span>
         ) : (
           <PropertiesTable
-            editable={editable}
+            editable={false}
             properties={unsavedProperties}
             setProperties={(properties) => {
               setSaveState("unsaved");
@@ -364,7 +379,7 @@ function BatchDetails({
                   associated_codes: unsavedCodes
                     .filter(({ kind, value }) => kind == "associated" && value)
                     .map(({ value }) => value),
-                  props: api_props_from_properties(unsavedProperties),
+                  props: unsavedRawProperties,
                 });
 
                 if (resp.kind == "problem") {
@@ -398,7 +413,7 @@ function BatchDetails({
                   navigate(generatePath("/batch/:id", { id: batch_id }));
                 }
               }}
-              disabled={saveState == "saving"}
+              disabled={saveState == "saving" || !schemaPropertiesValid}
               className="flex-1 py-3 px-6 text-base font-semibold bg-[#26532b] text-white rounded-md hover:bg-[#1e4423] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
             >
               {saveState == "saving" ? "Saving..." : "Save Changes"}

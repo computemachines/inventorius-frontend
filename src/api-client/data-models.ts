@@ -105,7 +105,7 @@ export interface ResourceCreationProblem extends Problem {
 
 export interface SkuCreationRequest {
   id?: string;
-  name: string;
+  name?: string;
   props?: unknown;
   owned_codes?: string[];
   associated_codes?: string[];
