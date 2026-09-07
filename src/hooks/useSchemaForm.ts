@@ -43,6 +43,7 @@ export function useSchemaForm(
   const [schemaRootMixins, setSchemaRootMixins] = useState<string[]>([]);
   const [fieldValues, setFieldValues] = useState<SchemaValues>(initialValuesRef.current);
   const [availableFields, setAvailableFields] = useState<SchemaField[]>([]);
+  const [hasEvaluated, setHasEvaluated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const restorationCache = useRef<SchemaValues>({});
@@ -77,6 +78,7 @@ export function useSchemaForm(
       if (!response.ok) throw new Error(`API error: ${response.status}`);
       const data = (await response.json()) as EvaluateResponse;
       if (!mounted.current || generation !== requestGeneration.current) return;
+      setHasEvaluated(true);
       setActiveMixins((previous) => sameJson(previous, data.active_mixins) ? previous : data.active_mixins);
       setImplicitRootMixins((previous) => {
         const next = data.implicit_root_mixins ?? [];
@@ -177,6 +179,7 @@ export function useSchemaForm(
     fieldValues,
     availableFields,
     loading,
+    hasEvaluated,
     error,
     handleFieldChange,
     reset,
