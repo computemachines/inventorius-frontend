@@ -83,6 +83,11 @@ interface TriggerCondition {
   value: unknown;
 }
 
+// An empty conjunction is true, using the existing API trigger representation.
+function isAlwaysTrigger(trigger: TriggerCondition): boolean {
+  return trigger.op === "and" && Array.isArray(trigger.value) && trigger.value.length === 0;
+}
+
 interface ChildMixin {
   mixin: string;
   trigger: TriggerCondition;
@@ -148,7 +153,7 @@ function validateMixin(mixin: Mixin, allMixinNames: string[]): ValidationError[]
     } else if (!allMixinNames.includes(child.mixin)) {
       errors.push({ path: `child[${i}]`, message: `Unknown mixin: ${child.mixin}` });
     }
-    if (!child.trigger.field.trim()) {
+    if (!isAlwaysTrigger(child.trigger) && !child.trigger.field.trim()) {
       errors.push({ path: `child[${i}].trigger`, message: "Trigger field required" });
     }
   });
@@ -352,11 +357,26 @@ function ChildMixinEditor({
           <option key={m} value={m}>{m}</option>
         ))}
       </select>
-      <span className="text-[#6d635d] text-sm font-medium">when</span>
-      <TriggerEditor
-        trigger={child.trigger}
-        onChange={(t) => onChange({ ...child, trigger: t })}
-      />
+      <select
+        aria-label="Child activation"
+        value={isAlwaysTrigger(child.trigger) ? "always" : "when"}
+        onChange={(e) => onChange({
+          ...child,
+          trigger: e.target.value === "always"
+            ? { field: "", op: "and", value: [] }
+            : { field: "", op: "eq", value: "" },
+        })}
+        className={`${selectClasses} w-28 py-1.5 text-sm`}
+      >
+        <option value="when">When</option>
+        <option value="always">Always</option>
+      </select>
+      {!isAlwaysTrigger(child.trigger) && (
+        <TriggerEditor
+          trigger={child.trigger}
+          onChange={(t) => onChange({ ...child, trigger: t })}
+        />
+      )}
       <button
         onClick={onDelete}
         className="w-6 h-6 flex items-center justify-center text-[#6d635d] hover:text-red-600 hover:bg-red-50 rounded transition-colors ml-auto flex-shrink-0"
@@ -468,7 +488,7 @@ function MixinEditor({
           {/* Children */}
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <label className={`${labelClasses} mb-0`}>Children (triggers)</label>
+              <label className={`${labelClasses} mb-0`}>Children</label>
               <button onClick={addChild} className={`${btnSecondary} py-0.5 px-2 text-xs`}>+ Add</button>
             </div>
             <div className="flex flex-col gap-1">
