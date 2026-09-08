@@ -363,13 +363,18 @@ export class ApiClient {
   async createAccessToken(
     label: string,
     expiresInDays: number,
+    allowInventoryChanges = false,
   ): Promise<AuthAccessTokenCreatedResource> {
     const response = await this._fetch(
       `${this.hostname}/api/auth/access-tokens`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label, expires_in_days: expiresInDays }),
+        body: JSON.stringify({
+          label,
+          expires_in_days: expiresInDays,
+          allow_inventory_changes: allowInventoryChanges,
+        }),
       },
     );
     const body = await response.json();

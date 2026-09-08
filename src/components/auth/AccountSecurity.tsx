@@ -24,6 +24,7 @@ export default function AccountSecurity() {
   const [tokens, setTokens] = useState<AuthAccessToken[]>([]);
   const [tokenLabel, setTokenLabel] = useState("Inventory Assistant");
   const [expiresInDays, setExpiresInDays] = useState(30);
+  const [allowInventoryChanges, setAllowInventoryChanges] = useState(false);
   const [newTokenSecret, setNewTokenSecret] = useState("");
 
   const loadSessions = async () => {
@@ -225,8 +226,8 @@ export default function AccountSecurity() {
         <p className="mt-2 max-w-2xl text-slate-600">
           Create a token to connect the Inventory Assistant desktop app. It can
           read inventory and edit catalog items and schemas. It cannot receive,
-          move, release, or count stock, upload files, or change account
-          security.
+          move, release, or count stock unless you grant that extra authority
+          below. It cannot upload files or change account security.
         </p>
 
         <form
@@ -242,6 +243,7 @@ export default function AccountSecurity() {
               const created = await api.createAccessToken(
                 tokenLabel,
                 expiresInDays,
+                allowInventoryChanges,
               );
               setNewTokenSecret(created.state.secret);
               setTokens((current) => [created.state.token, ...current]);
@@ -278,6 +280,23 @@ export default function AccountSecurity() {
               <option value={30}>30 days</option>
               <option value={90}>90 days</option>
             </select>
+          </label>
+          <label className="flex items-start gap-3 text-sm text-slate-800">
+            <input
+              className="mt-1"
+              type="checkbox"
+              checked={allowInventoryChanges}
+              onChange={(event) => setAllowInventoryChanges(event.target.checked)}
+            />
+            <span>
+              <span className="font-medium">
+                Allow stock operations (receive, move, consume)
+              </span>
+              <span className="mt-1 block text-slate-600">
+                Optional extra authority. Leave unchecked for catalog-only
+                access.
+              </span>
+            </span>
           </label>
           <button
             className="w-fit rounded-lg bg-blue-700 px-4 py-2 font-medium
