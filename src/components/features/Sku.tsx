@@ -15,6 +15,7 @@ import ReactModal from "react-modal";
 
 import CodesInput, { Code } from "../composites/CodesInput";
 import { FourOhFour } from "../primitives/FourOhFour";
+import BatchName from "../primitives/BatchName";
 import ItemLabel from "../primitives/ItemLabel";
 import PrintButton from "../composites/PrintButton";
 import ItemLocations from "../primitives/ItemLocations";
@@ -74,6 +75,7 @@ function SkuBatchesSection({ sku }: { sku: ApiSku }) {
             {data.skuBatches.state.map((batchId) => (
               <li key={batchId}>
                 <ItemLabel link={true} label={batchId} />
+                <BatchName id={batchId} skuName={sku.state.name} />
               </li>
             ))}
           </ul>

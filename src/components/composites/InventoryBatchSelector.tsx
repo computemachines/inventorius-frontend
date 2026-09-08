@@ -47,7 +47,11 @@ function CandidateDetails({ candidate }: { candidate: InventoryCandidate }) {
         {candidate.batch_id}
         {candidateName(candidate) ? ` — ${candidateName(candidate)}` : ""}
       </span>
+      {candidate.batch_name && candidate.sku_name && candidate.batch_name !== candidate.sku_name && (
+        <span className="block text-sm text-[#6d635d]">SKU: {candidate.sku_name}</span>
+      )}
       <span className="block text-sm text-[#6d635d]">
+        {!candidate.batch_name && candidate.sku_name ? "Name from SKU · " : ""}
         {candidate.sku_id ? `${candidate.sku_id} · ` : ""}
         {candidate.available_quantity != null
           ? `${candidate.available_quantity} available · `
