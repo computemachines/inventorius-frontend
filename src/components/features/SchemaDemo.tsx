@@ -21,6 +21,7 @@ interface SchemaField {
   options?: string[];
   unit?: string;
   required?: boolean;
+  default?: boolean;
 }
 
 interface EvaluateResponse {
@@ -138,8 +139,8 @@ export default function SchemaDemo() {
           if (field.name in restorationCache.current) {
             cleaned[field.name] = restorationCache.current[field.name];
           } else if (field.type === "bool") {
-            // Default bool fields to true (user unchecks to trigger next level)
-            cleaned[field.name] = true;
+            // Preserve the legacy default when the schema does not specify one.
+            cleaned[field.name] = field.default ?? true;
           }
           // Other field types start undefined/empty
         }

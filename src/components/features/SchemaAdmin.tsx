@@ -199,7 +199,9 @@ function FieldEditor({
     if (newType === "unit" && !field.unit) {
       updates.unit = "";
     }
-    onChange({ ...field, ...updates });
+    const next = { ...field, ...updates };
+    if (newType !== "bool") delete next.default;
+    onChange(next);
   };
 
   return (
@@ -225,6 +227,20 @@ function FieldEditor({
         <option value="item-reference">item reference</option>
         <option value="item-reference-list">item reference list</option>
       </select>
+      {field.type === "bool" && (
+        <label className="inline-flex items-center gap-2 text-xs text-[#04151f]">
+          Default value
+          <select
+            aria-label={`Default value for ${field.name || "boolean field"}`}
+            value={String(field.default ?? true)}
+            onChange={(e) => onChange({ ...field, default: e.target.value === "true" })}
+            className={`${selectClasses} py-1.5 text-xs`}
+          >
+            <option value="true">True</option>
+            <option value="false">False</option>
+          </select>
+        </label>
+      )}
       {field.type === "enum" && (
         <EnumOptionsInput
           options={field.options}
@@ -659,6 +675,21 @@ function TestPanel({
       runTest();
     }
   }, [activeMixins, fieldValues, schemaName]);
+
+  useEffect(() => {
+    if (!result) return;
+    setFieldValues(previous => {
+      const next = { ...previous };
+      let changed = false;
+      for (const field of result.available_fields) {
+        if (field.type === "bool" && !(field.name in next)) {
+          next[field.name] = field.default ?? true;
+          changed = true;
+        }
+      }
+      return changed ? next : previous;
+    });
+  }, [result]);
 
   const handleFieldChange = (name: string, value: string | boolean) => {
     setFieldValues((prev) => ({ ...prev, [name]: value }));

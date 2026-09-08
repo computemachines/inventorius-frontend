@@ -8,6 +8,7 @@ export interface SchemaField {
   unit?: string;
   required?: boolean;
   multiline?: boolean;
+  default?: boolean;
 }
 
 export type SchemaValue = unknown;
@@ -144,7 +145,7 @@ export function useSchemaForm(
             cleaned[field.name] = restorationCache.current[field.name];
           } else if (field.type === "bool") {
             changed = true;
-            cleaned[field.name] = true;
+            cleaned[field.name] = field.default ?? true;
           }
         }
       }
