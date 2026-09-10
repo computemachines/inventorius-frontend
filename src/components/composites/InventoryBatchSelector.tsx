@@ -47,7 +47,11 @@ function CandidateDetails({ candidate }: { candidate: InventoryCandidate }) {
         {candidate.batch_id}
         {candidateName(candidate) ? ` — ${candidateName(candidate)}` : ""}
       </span>
+      {candidate.batch_name && candidate.sku_name && candidate.batch_name !== candidate.sku_name && (
+        <span className="block text-sm text-[#6d635d]">SKU: {candidate.sku_name}</span>
+      )}
       <span className="block text-sm text-[#6d635d]">
+        {!candidate.batch_name && candidate.sku_name ? "Name from SKU · " : ""}
         {candidate.sku_id ? `${candidate.sku_id} · ` : ""}
         {candidate.available_quantity != null
           ? `${candidate.available_quantity} available · `
@@ -89,18 +93,7 @@ interface InventoryBatchSelectorBaseProps {
   firstInputRef?: React.Ref<HTMLInputElement>;
 }
 
-export type InventoryBatchSelectorProps = InventoryBatchSelectorBaseProps &
-  (
-    | {
-        observedEvidence?: undefined;
-        setObservedEvidence?: undefined;
-      }
-    | {
-        /** Explicit physical marks to persist with a successful receipt. */
-        observedEvidence: Code[];
-        setObservedEvidence: (evidence: Code[]) => void;
-      }
-  );
+export type InventoryBatchSelectorProps = InventoryBatchSelectorBaseProps;
 
 /**
  * Resolves scanner evidence to an operation-ready holding in one source bin.
@@ -118,8 +111,6 @@ export default function InventoryBatchSelector({
   setSelectedBatchId,
   selectedSkuId,
   setSelectedSkuId,
-  observedEvidence,
-  setObservedEvidence,
   unknownAction,
   firstInputRef,
 }: InventoryBatchSelectorProps) {
@@ -132,15 +123,7 @@ export default function InventoryBatchSelector({
 
   // Blank rows are a scanner affordance. They do not become resolver terms,
   // and nonblank evidence is sent byte-for-byte rather than ID-normalized.
-  const hasExplicitObservedEvidence =
-    observedEvidence !== undefined && setObservedEvidence !== undefined;
-  const evidenceValues = useMemo(
-    () => [
-      ...resolverEvidence(evidence),
-      ...resolverEvidence(observedEvidence ?? []),
-    ],
-    [evidence, observedEvidence],
-  );
+  const evidenceValues = useMemo(() => resolverEvidence(evidence), [evidence]);
   const evidenceSignature = JSON.stringify(evidenceValues);
   const sourceIsRequired = sourceLocationId !== undefined;
   const canonicalSourceId = normalizeInventoriusId(sourceLocationId ?? "");
@@ -251,7 +234,6 @@ export default function InventoryBatchSelector({
         setCodes={(nextEvidence) => {
           const nextSignature = JSON.stringify([
             ...resolverEvidence(nextEvidence),
-            ...resolverEvidence(observedEvidence ?? []),
           ]);
           if (nextSignature !== evidenceSignature) {
             setSelectedBatchId("");
@@ -260,42 +242,10 @@ export default function InventoryBatchSelector({
           setEvidence(nextEvidence);
         }}
         showRelationshipControls={false}
-        allowMultiple={!hasExplicitObservedEvidence}
       />
       <p className="mt-1.5 text-sm text-[#6d635d]">
-        {hasExplicitObservedEvidence
-          ? "Scan a known label or code, or type a description to find the item."
-          : "Scan a batch label or barcode, or type a description. Additional scans narrow the candidates."}
+        Scan a batch label or barcode, or type a description. Additional scans narrow the candidates.
       </p>
-
-      {hasExplicitObservedEvidence && (
-        <div className="mt-4">
-          <label htmlFor={`${id}-observed`} className={labelClasses}>
-            Observed codes on this receipt (optional)
-          </label>
-          <CodesInput
-            id={`${id}-observed`}
-            inputLabel="Additional observed code on this receipt"
-            codes={observedEvidence}
-            setCodes={(nextEvidence) => {
-              const nextSignature = JSON.stringify([
-                ...resolverEvidence(evidence),
-                ...resolverEvidence(nextEvidence),
-              ]);
-              if (nextSignature !== evidenceSignature) {
-                setSelectedBatchId("");
-                setSelectedSkuId?.("");
-              }
-              setObservedEvidence(nextEvidence);
-            }}
-            showRelationshipControls={false}
-          />
-          <p className="mt-1.5 text-sm text-[#6d635d]">
-            These physical marks will be remembered with the receipt and also
-            narrow the candidates.
-          </p>
-        </div>
-      )}
 
       <div
         className="mt-3"

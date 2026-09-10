@@ -1,3 +1,4 @@
+import { ItemReferenceInput, ItemReferenceListInput } from "./ItemReferenceInput";
 // src/components/composites/SchemaFields.tsx
 // Fully human reviewed: NO
 // Progress: NONE
@@ -10,7 +11,12 @@ import * as React from "react";
 import { useContext, useState, useEffect, useCallback } from "react";
 import { ApiContext, FileUploadState } from "../../api-client/api-client";
 import { AttributeBundle } from "../../api-client/data-models";
-import { SchemaField } from "../../hooks/useSchemaForm";
+import { SchemaField, SchemaValues } from "../../hooks/useSchemaForm";
+import {
+  SchemaInputValue,
+  valueForSchemaInput,
+  valueFromSchemaInput,
+} from "./schema-property-values";
 import { AsyncTypeaheadField } from "./Typeahead";
 
 // Shared Tailwind classes (design system)
@@ -35,28 +41,39 @@ export function formatLabel(name: string): string {
 
 interface FieldRendererProps {
   field: SchemaField;
-  value: string | boolean;
-  onChange: (value: string | boolean) => void;
+  value: SchemaInputValue;
+  onChange: (value: SchemaInputValue) => void;
   inputId: string;
 }
 
 type FieldRenderer = React.FC<FieldRendererProps>;
 
-const TextRenderer: FieldRenderer = ({ value, onChange, inputId }) => (
-  <input
-    id={inputId}
-    type="text"
-    value={(value as string) ?? ""}
-    onChange={(e) => onChange(e.target.value)}
-    className={inputClasses}
-    autoComplete="off"
-  />
-);
+const TextRenderer: FieldRenderer = ({ field, value, onChange, inputId }) =>
+  field.multiline ? (
+    <textarea
+      id={inputId}
+      rows={4}
+      value={(value as string) ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      className={inputClasses}
+      autoComplete="off"
+    />
+  ) : (
+    <input
+      id={inputId}
+      type="text"
+      value={(value as string) ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      className={inputClasses}
+      autoComplete="off"
+    />
+  );
 
 const NumberRenderer: FieldRenderer = ({ value, onChange, inputId }) => (
   <input
     id={inputId}
-    type="number"
+    type="text"
+    inputMode="decimal"
     value={(value as string) ?? ""}
     onChange={(e) => onChange(e.target.value)}
     className={inputClasses}
@@ -94,21 +111,38 @@ const EnumRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => (
   </select>
 );
 
-const UnitRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => (
-  <div className="flex items-stretch">
-    <input
-      id={inputId}
-      type="text"
-      value={(value as string) ?? ""}
-      onChange={(e) => onChange(e.target.value)}
-      className={`${inputClasses} flex-1 rounded-r-none border-r-0`}
-      placeholder="e.g., 100"
-    />
-    <span className="flex items-center px-3 bg-[#e5e4de] text-[#6d635d] text-sm font-medium border border-[#cdd2d6] border-l-0 rounded-r-md whitespace-nowrap">
-      {field.unit}
-    </span>
-  </div>
-);
+const UnitRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => {
+  const flexible = !field.unit?.trim();
+  const measurement = typeof value === "object" && !Array.isArray(value) ? value : { value: String(value ?? ""), unit: "" };
+  return (
+    <div className="flex items-stretch min-w-0">
+      <input
+        id={inputId}
+        type="text"
+        inputMode="decimal"
+        value={measurement.value}
+        onChange={(e) => onChange(flexible ? { ...measurement, value: e.target.value } : e.target.value)}
+        className={`${inputClasses} flex-1 min-w-0 rounded-r-none border-r-0`}
+        placeholder="Value"
+      />
+      {flexible ? (
+        <input
+          type="text"
+          aria-label={`${formatLabel(field.name)} unit`}
+          value={measurement.unit}
+          onChange={(e) => onChange({ ...measurement, unit: e.target.value })}
+          placeholder="Unit"
+          title="Enter a unit, for example mm, yd, or kg"
+          className={`${inputClasses.replace("w-full", "w-24")} shrink-0 rounded-l-none bg-[#f5f4ef]`}
+        />
+      ) : (
+        <span className="flex items-center px-3 bg-[#e5e4de] text-[#6d635d] text-sm font-medium border border-[#cdd2d6] border-l-0 rounded-r-md whitespace-nowrap">
+          {field.unit}
+        </span>
+      )}
+    </div>
+  );
+};
 
 type FileMetadata = FileUploadState;
 
@@ -118,31 +152,32 @@ const FileRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => {
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<FileMetadata | null>(null);
 
-  // Fetch metadata when value (file_id) changes
+  // Load real metadata when reopening a saved file property.
   useEffect(() => {
+    let active = true;
+    setPreview(null);
+    setError(null);
     if (value && typeof value === "string") {
-      fetch(`/api/files/${value}`, { method: "HEAD" })
-        .then((r) => {
-          if (r.ok) {
-            // File exists, create preview info from the value
-            // We don't have full metadata, but we can at least show the ID
-            setPreview({
-              id: value as string,
-              filename: "Uploaded file",
-              content_type: "",
-              size: 0,
-              is_image: true, // Assume image for thumbnail attempt
-              thumbnail_url: `/api/files/${value}/thumb`,
-            });
-          }
+      fetch(`/api/files/${encodeURIComponent(value)}/meta`)
+        .then((response) => {
+          if (!response.ok) throw new Error("The attached file could not be loaded. You can replace it.");
+          return response.json();
         })
-        .catch(() => {
-          // File doesn't exist or error
-          setPreview(null);
-        });
-    } else {
-      setPreview(null);
+        .then((metadata) => {
+          if (active) setPreview({
+            id: metadata.id,
+            filename: metadata.original_filename,
+            content_type: metadata.content_type,
+            size: metadata.size,
+            is_image: metadata.is_image,
+            thumbnail_url: metadata.is_image
+              ? `/api/files/${metadata.id}${metadata.has_thumbnail ? "/thumb" : ""}`
+              : undefined,
+          });
+        })
+        .catch((error) => { if (active) setError(error.message); });
     }
+    return () => { active = false; };
   }, [value]);
 
   const handleFileSelect = useCallback(
@@ -185,7 +220,7 @@ const FileRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => {
             <img
               src={preview.thumbnail_url}
               alt="Preview"
-              className="w-16 h-16 object-cover rounded"
+              className="w-24 h-24 object-contain rounded"
               onError={(e) => {
                 // Hide broken image
                 (e.target as HTMLImageElement).style.display = "none";
@@ -244,6 +279,8 @@ const fieldRenderers: Record<string, FieldRenderer> = {
   bool: BoolRenderer,
   enum: EnumRenderer,
   unit: UnitRenderer,
+  "item-reference": ({ value, onChange, inputId }) => <ItemReferenceInput id={inputId} value={typeof value === "string" ? value : ""} onChange={onChange} />,
+  "item-reference-list": ({ field, value, onChange, inputId }) => <ItemReferenceListInput id={inputId} label={formatLabel(field.name)} values={Array.isArray(value) ? value : []} onChange={onChange} />,
   file: FileRenderer,
 };
 
@@ -314,8 +351,8 @@ function TypeaheadRenderer({
 
 interface SchemaFieldInputProps {
   field: SchemaField;
-  value: string | boolean;
-  onChange: (name: string, value: string | boolean) => void;
+  value: SchemaInputValue;
+  onChange: (name: string, value: SchemaInputValue) => void;
   /** For typeahead fields: entity type (e.g., "sku", "batch") */
   entityType?: EntityType;
   /** For typeahead fields: API field name for search */
@@ -397,9 +434,9 @@ interface SchemaFieldListProps {
   /** Fields to render */
   fields: SchemaField[];
   /** Current field values */
-  values: Record<string, string | boolean>;
+  values: SchemaValues;
   /** Called when a field changes */
-  onChange: (name: string, value: string | boolean) => void;
+  onChange: (name: string, value: unknown) => void;
   /** Entity type for typeahead searches (e.g., "sku", "batch") */
   entityType?: EntityType;
   /** Map of field names to their API trigger field names */
@@ -433,8 +470,10 @@ export function SchemaFieldList({
           <SchemaFieldInput
             key={field.name}
             field={field}
-            value={values[field.name] ?? ""}
-            onChange={onChange}
+            value={valueForSchemaInput(field, values[field.name])}
+            onChange={(name, value) =>
+              onChange(name, valueFromSchemaInput(field, value))
+            }
             entityType={entityType}
             triggerApiField={triggerApiField}
             isTypeahead={!!triggerApiField}

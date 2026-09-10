@@ -12,7 +12,7 @@ export type AuthSessionState =
   | {
       status: "authenticated";
       principal: PrincipalSummary;
-      csrf_token: string;
+      csrf_token: string | null;
     };
 
 export type AuthSessionResource = {
@@ -65,6 +65,31 @@ export type AuthSessionsResource = {
   kind: "auth-sessions";
   Id: "/api/auth/sessions";
   state: { sessions: AuthSessionInventoryItem[] };
+  operations: RestOperation[];
+};
+
+export type AuthAccessToken = {
+  id: string;
+  label: string;
+  capabilities: string[];
+  created_at: string;
+  expires_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  revoked: boolean;
+};
+
+export type AuthAccessTokensResource = {
+  kind: "auth-access-tokens";
+  Id: "/api/auth/access-tokens";
+  state: { tokens: AuthAccessToken[] };
+  operations: RestOperation[];
+};
+
+export type AuthAccessTokenCreatedResource = {
+  kind: "auth-access-token-created";
+  Id: string;
+  state: { token: AuthAccessToken; secret: string };
   operations: RestOperation[];
 };
 
