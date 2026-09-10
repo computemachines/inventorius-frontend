@@ -364,6 +364,7 @@ export class ApiClient {
     label: string,
     expiresInDays: number,
     allowInventoryChanges = false,
+    allowFileUploads = false,
   ): Promise<AuthAccessTokenCreatedResource> {
     const response = await this._fetch(
       `${this.hostname}/api/auth/access-tokens`,
@@ -374,6 +375,7 @@ export class ApiClient {
           label,
           expires_in_days: expiresInDays,
           allow_inventory_changes: allowInventoryChanges,
+          allow_file_uploads: allowFileUploads,
         }),
       },
     );

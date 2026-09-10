@@ -141,8 +141,12 @@ function FileValueDisplay({ fileId }: { fileId: string }) {
       return;
     }
 
+    const controller = new AbortController();
+    setLoading(true);
+    setError(false);
+    setMetadata(null);
     // Fetch file metadata
-    fetch(`/api/files/${fileId}/meta`)
+    fetch(`/api/files/${encodeURIComponent(fileId)}/meta`, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error("Not found");
         return r.json();
@@ -152,9 +156,11 @@ function FileValueDisplay({ fileId }: { fileId: string }) {
         setLoading(false);
       })
       .catch(() => {
+        if (controller.signal.aborted) return;
         setError(true);
         setLoading(false);
       });
+    return () => controller.abort();
   }, [fileId]);
 
   if (loading) {
@@ -176,7 +182,7 @@ function FileValueDisplay({ fileId }: { fileId: string }) {
   }
 
   // Image with thumbnail
-  if (metadata.is_image && metadata.has_thumbnail) {
+  if (metadata.is_image) {
     return (
       <a
         href={`/api/files/${fileId}`}
@@ -185,9 +191,10 @@ function FileValueDisplay({ fileId }: { fileId: string }) {
         className="inline-flex items-center gap-2 group"
       >
         <img
-          src={`/api/files/${fileId}/thumb`}
+          src={`/api/files/${fileId}${metadata.has_thumbnail ? "/thumb" : ""}`}
+          loading="lazy"
           alt={metadata.original_filename}
-          className="w-12 h-12 object-cover rounded border border-[#cdd2d6] group-hover:border-[#0c3764] transition-colors"
+          className="w-32 h-32 object-contain rounded border border-[#cdd2d6] group-hover:border-[#0c3764] transition-colors"
         />
         <span className="text-sm text-[#6d635d] group-hover:text-[#0c3764] truncate max-w-[150px]">
           {metadata.original_filename}

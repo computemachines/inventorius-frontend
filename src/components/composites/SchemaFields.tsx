@@ -152,31 +152,32 @@ const FileRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => {
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<FileMetadata | null>(null);
 
-  // Fetch metadata when value (file_id) changes
+  // Load real metadata when reopening a saved file property.
   useEffect(() => {
+    let active = true;
+    setPreview(null);
+    setError(null);
     if (value && typeof value === "string") {
-      fetch(`/api/files/${value}`, { method: "HEAD" })
-        .then((r) => {
-          if (r.ok) {
-            // File exists, create preview info from the value
-            // We don't have full metadata, but we can at least show the ID
-            setPreview({
-              id: value as string,
-              filename: "Uploaded file",
-              content_type: "",
-              size: 0,
-              is_image: true, // Assume image for thumbnail attempt
-              thumbnail_url: `/api/files/${value}/thumb`,
-            });
-          }
+      fetch(`/api/files/${encodeURIComponent(value)}/meta`)
+        .then((response) => {
+          if (!response.ok) throw new Error("The attached file could not be loaded. You can replace it.");
+          return response.json();
         })
-        .catch(() => {
-          // File doesn't exist or error
-          setPreview(null);
-        });
-    } else {
-      setPreview(null);
+        .then((metadata) => {
+          if (active) setPreview({
+            id: metadata.id,
+            filename: metadata.original_filename,
+            content_type: metadata.content_type,
+            size: metadata.size,
+            is_image: metadata.is_image,
+            thumbnail_url: metadata.is_image
+              ? `/api/files/${metadata.id}${metadata.has_thumbnail ? "/thumb" : ""}`
+              : undefined,
+          });
+        })
+        .catch((error) => { if (active) setError(error.message); });
     }
+    return () => { active = false; };
   }, [value]);
 
   const handleFileSelect = useCallback(
@@ -219,7 +220,7 @@ const FileRenderer: FieldRenderer = ({ field, value, onChange, inputId }) => {
             <img
               src={preview.thumbnail_url}
               alt="Preview"
-              className="w-16 h-16 object-cover rounded"
+              className="w-24 h-24 object-contain rounded"
               onError={(e) => {
                 // Hide broken image
                 (e.target as HTMLImageElement).style.display = "none";

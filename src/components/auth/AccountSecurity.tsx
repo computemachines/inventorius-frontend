@@ -25,6 +25,7 @@ export default function AccountSecurity() {
   const [tokenLabel, setTokenLabel] = useState("Inventory Assistant");
   const [expiresInDays, setExpiresInDays] = useState(30);
   const [allowInventoryChanges, setAllowInventoryChanges] = useState(false);
+  const [allowFileUploads, setAllowFileUploads] = useState(false);
   const [newTokenSecret, setNewTokenSecret] = useState("");
 
   const loadSessions = async () => {
@@ -244,6 +245,7 @@ export default function AccountSecurity() {
                 tokenLabel,
                 expiresInDays,
                 allowInventoryChanges,
+                allowFileUploads,
               );
               setNewTokenSecret(created.state.secret);
               setTokens((current) => [created.state.token, ...current]);
@@ -295,6 +297,17 @@ export default function AccountSecurity() {
               <span className="mt-1 block text-slate-600">
                 Optional extra authority. Leave unchecked for catalog-only
                 access.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 text-sm text-slate-800">
+            <input className="mt-1" type="checkbox" checked={allowFileUploads}
+              onChange={(event) => setAllowFileUploads(event.target.checked)} />
+            <span>
+              <span className="font-medium">Allow file uploads</span>
+              <span className="mt-1 block text-slate-600">
+                Attach photos and documents to properties. Uploaded files are publicly readable.
+                This does not allow file deletion.
               </span>
             </span>
           </label>
