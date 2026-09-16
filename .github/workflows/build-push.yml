@@ -156,24 +156,7 @@ jobs:
             BUILD_TIME=${{ steps.build.outputs.created }}
           provenance: mode=max
 
-      - name: Wait until development reports this revision
-        if: github.ref == 'refs/heads/development'
-        run: |
-          set -euo pipefail
-          deadline=$((SECONDS + 900))
-          while (( SECONDS < deadline )); do
-            revision="$(
-              curl --fail --silent --show-error --max-time 15 \
-                https://dev.inventory.computemachines.com/build.json |
-                jq -r '.revision // empty' || true
-            )"
-            test "$revision" = "$GITHUB_SHA" && exit 0
-            sleep 15
-          done
-          echo "development did not report $GITHUB_SHA within 15 minutes" >&2
-          exit 1
-
-      - name: Record observed browser release, maps, and development deploy
+      - name: Record built browser release and source maps
         if: github.ref == 'refs/heads/development' && steps.sentry.outputs.configured == 'true'
         uses: getsentry/action-release@v3
         env:
@@ -182,7 +165,6 @@ jobs:
           SENTRY_PROJECT: ${{ vars.SENTRY_CLIENT_PROJECT }}
         with:
           release: ${{ steps.build.outputs.release }}
-          environment: development
           projects: ${{ vars.SENTRY_CLIENT_PROJECT }}
           sourcemaps: dist/assets
           url_prefix: ~/assets
@@ -190,7 +172,7 @@ jobs:
           ignore_missing: true
           disable_telemetry: true
 
-      - name: Record observed SSR release and private maps
+      - name: Record built SSR release and private maps
         if: github.ref == 'refs/heads/development' && steps.sentry.outputs.configured == 'true'
         uses: getsentry/action-release@v3
         env:
