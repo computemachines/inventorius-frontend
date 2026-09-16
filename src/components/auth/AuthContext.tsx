@@ -35,12 +35,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         frontloadApi.getApplicationRoot(),
       ]);
       return { session, application };
-    }
+    },
   );
   const session = (data?.session as AuthSessionResource | undefined) ?? null;
 
   useEffect(() => {
-    api.setCsrfToken(session?.state.csrf_token);
+    api.setCsrfToken(session?.state.csrf_token ?? undefined);
   }, [api, session?.state.csrf_token]);
 
   const applicationOperation = (rel: string) => {
@@ -57,11 +57,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         pending: frontloadMeta.pending,
         hasOperation: (rel) =>
           data?.application?.operations.some(
-            (operation) => operation.rel === rel
+            (operation) => operation.rel === rel,
           ) ?? false,
         applicationOperation,
         hasAuthOperation: (rel) =>
-          session?.operations.some((operation) => operation.rel === rel) ?? false,
+          session?.operations.some((operation) => operation.rel === rel) ??
+          false,
         authOperation: (rel) =>
           session?.operations.find((operation) => operation.rel === rel),
       }}

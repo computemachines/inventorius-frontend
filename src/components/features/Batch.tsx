@@ -40,7 +40,9 @@ import PropertiesTable, {
 import WarnModal from "../primitives/WarnModal";
 import FormSection from "../primitives/FormSection";
 import { labelClasses, inputClasses } from "../composites/SchemaFields";
+import { SchemaPropertiesEditor } from "../composites/SchemaPropertiesEditor";
 import { useAuth } from "../auth/AuthContext";
+import SharedSkuDetails from "../composites/SharedSkuDetails";
 import QuantityHoldings from "./QuantityHoldings";
 
 function BatchDetails({
@@ -60,6 +62,8 @@ function BatchDetails({
   const [unsavedName, setUnsavedName] = useState("");
   const [unsavedCodes, setUnsavedCodes] = useState<Code[]>([]);
   const [unsavedProperties, setUnsavedProperties] = useState<Property[]>([]);
+  const [unsavedRawProperties, setUnsavedRawProperties] = useState<Record<string, unknown>>({});
+  const [schemaPropertiesValid, setSchemaPropertiesValid] = useState(true);
   const [loadedBatch, setLoadedBatch] = useState<ApiBatch | null>(null);
 
   const api = useContext(ApiContext);
@@ -101,6 +105,7 @@ function BatchDetails({
     ) {
       setLoadedBatch(data.batch);
       // reset unsaved data
+      setUnsavedParentSkuId(data.batch.state.sku_id || "");
       setUnsavedName(data.batch.state.name);
       setUnsavedCodes([
         ...(data.batch.state.owned_codes || []).map((value) => ({
@@ -112,6 +117,8 @@ function BatchDetails({
           kind: "associated" as const,
         })),
       ]);
+      setUnsavedRawProperties({ ...(data.batch.state.props || {}) });
+      setSchemaPropertiesValid(true);
       setUnsavedProperties(
         Object.entries(data.batch.state.props || {}).map(([name, value]) => {
           let typed;
@@ -133,7 +140,7 @@ function BatchDetails({
                 value: value,
               };
             }
-          } else if (typeof value == "object") {
+          } else if (typeof value == "object" && value !== null) {
             if ("unit" in value && "value" in value) {
               const physical = new Unit1(
                 value as { unit: string; value: number }
@@ -152,7 +159,7 @@ function BatchDetails({
               typed = { kind: "string", value: JSON.stringify(value) };
             }
           } else {
-            throw new Error("Unsupported api type");
+            typed = { kind: "string", value: String(value) };
           }
           return new Property({ name, typed: typed });
         })
@@ -178,36 +185,9 @@ function BatchDetails({
     }
   }
 
-  let parentSkuShowItemDesc = null;
-  if (editable) {
-    parentSkuShowItemDesc = (
-      <input
-        type="text"
-        id="parent_sku_id"
-        name="parent_sku_id"
-        className="form-single-code-input"
-        value={unsavedParentSkuId}
-        onChange={(e) => setUnsavedParentSkuId(e.target.value)}
-      />
-    );
-  } else if (!data.batch.state.sku_id) {
-    parentSkuShowItemDesc = (
-      <div style={{ fontStyle: "italic" }}>(Anonymous)</div>
-    );
-  } else if (!data.parentSku || data.parentSku.kind == "problem") {
-    Sentry.captureException(
-      new Error(
-        "parent_sku was null or problem but batch.state.sku_id was not empty"
-      )
-    );
-    parentSkuShowItemDesc = <div>{data.batch.state.sku_id} not found</div>;
-  } else if (data.parentSku.kind == "sku") {
-    parentSkuShowItemDesc = (
-      <ItemLabel link={true} label={data.parentSku.state.id} />
-    );
-  } else {
-    throw Error("impossible fallthrough");
-  }
+  const parentSku = data.parentSku?.kind === "sku" ? data.parentSku : null;
+  const title = data.batch.state.name || parentSku?.state.name || data.batch.state.id;
+  const parentChanged = editable && unsavedParentSkuId !== (data.batch.state.sku_id || "");
 
   let itemLocations = null;
   if (data.batchBins.kind == "problem") {
@@ -253,26 +233,21 @@ function BatchDetails({
 
       {/* Page Header */}
       <h2 className="text-2xl font-bold text-[#04151f] mb-6 pb-3 border-b-2 border-[#cdd2d6]">
-        {editable ? "Edit Batch" : "Batch Details"}
+        {editable ? `Edit batch: ${title}` : title}
       </h2>
 
-      {/* Parent SKU */}
-      <label htmlFor="parent-sku" className={labelClasses}>Parent SKU</label>
-      {editable ? (
-        <input
-          id="parent-sku"
-          type="text"
-          className={inputClasses + " mb-6"}
-          value={unsavedParentSkuId}
-          onChange={(e) => {
-            setSaveState("unsaved");
-            setUnsavedParentSkuId(e.target.value);
-          }}
-          placeholder="Enter SKU ID..."
-        />
-      ) : (
-        <div className="text-[#04151f] mb-6">{parentSkuShowItemDesc}</div>
-      )}
+      <p className="text-sm text-[#6d635d] -mt-3 mb-6">
+        Batch {data.batch.state.id}
+        {data.batch.state.sku_id && <> · of <ItemLabel label={data.batch.state.sku_id} /></>}
+      </p>
+      <section aria-label="This batch">
+      <h3 className="text-lg font-semibold mb-4">This batch</h3>
+      {editable && <>
+        <label htmlFor="parent-sku" className={labelClasses}>Parent SKU</label>
+        <input id="parent-sku" type="text" className={inputClasses + " mb-6"}
+          value={unsavedParentSkuId} onChange={e => { setSaveState("unsaved"); setUnsavedParentSkuId(e.target.value); }}
+          placeholder="Enter SKU ID..." />
+      </>}
 
       {/* Batch Label */}
       <label className={labelClasses}>Batch Label</label>
@@ -283,9 +258,8 @@ function BatchDetails({
         <PrintButton value={data.batch.state.id} />
       </div>
 
-      {/* Name */}
-      <label htmlFor="batch-name" className={labelClasses}>Name</label>
-      {editable ? (
+      {editable && <>
+        <label htmlFor="batch-name" className={labelClasses}>Name</label>
         <input
           id="batch-name"
           type="text"
@@ -296,11 +270,7 @@ function BatchDetails({
             setUnsavedName(e.target.value);
           }}
         />
-      ) : (
-        <div className="text-[#04151f] mb-6">
-          {unsavedName || <span className="italic text-[#6d635d]">(No name)</span>}
-        </div>
-      )}
+      </>}
 
       {/* Locations */}
       <FormSection title="Locations" bgAccent="bg-dark-accent" withSeparator={true}>
@@ -330,12 +300,21 @@ function BatchDetails({
       </FormSection>
 
       {/* Properties */}
-      <FormSection title="Additional Properties" bgAccent="bg-accent">
-        {unsavedProperties.length == 0 && !editable ? (
+      <FormSection title="Batch properties" bgAccent="bg-accent">
+        {editable ? (
+          <SchemaPropertiesEditor
+            schemaName="batch"
+            resourceId={data.batch.state.id}
+            properties={unsavedRawProperties}
+            onChange={setUnsavedRawProperties}
+            onDirty={() => setSaveState("unsaved")}
+            onValidityChange={setSchemaPropertiesValid}
+          />
+        ) : unsavedProperties.length == 0 ? (
           <span className="text-[#6d635d] italic">None</span>
         ) : (
           <PropertiesTable
-            editable={editable}
+            editable={false}
             properties={unsavedProperties}
             setProperties={(properties) => {
               setSaveState("unsaved");
@@ -344,6 +323,11 @@ function BatchDetails({
           />
         )}
       </FormSection>
+
+      </section>
+      {parentChanged ? <p className="mt-6">Save the new parent SKU to load its shared details.</p>
+        : parentSku ? <SharedSkuDetails sku={parentSku} />
+        : <p className="mt-6">{data.batch.state.sku_id ? `Shared details could not be loaded for ${data.batch.state.sku_id}.` : "This batch has no parent SKU."}</p>}
 
       {/* Actions */}
       <div className="flex gap-3 mt-8 pt-6 border-t border-[#cdd2d6]">
@@ -364,7 +348,7 @@ function BatchDetails({
                   associated_codes: unsavedCodes
                     .filter(({ kind, value }) => kind == "associated" && value)
                     .map(({ value }) => value),
-                  props: api_props_from_properties(unsavedProperties),
+                  props: unsavedRawProperties,
                 });
 
                 if (resp.kind == "problem") {
@@ -398,7 +382,7 @@ function BatchDetails({
                   navigate(generatePath("/batch/:id", { id: batch_id }));
                 }
               }}
-              disabled={saveState == "saving"}
+              disabled={saveState == "saving" || !schemaPropertiesValid}
               className="flex-1 py-3 px-6 text-base font-semibold bg-[#26532b] text-white rounded-md hover:bg-[#1e4423] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
             >
               {saveState == "saving" ? "Saving..." : "Save Changes"}

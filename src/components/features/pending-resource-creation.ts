@@ -80,7 +80,7 @@ function isSkuCreationRequest(value: unknown): value is SkuCreationRequest {
   }
   return (
     isOptionalId(value.id, "SKU") &&
-    typeof value.name === "string" &&
+    isOptionalString(value.name) &&
     isOptionalProps(value.props) &&
     isOptionalStringArray(value.owned_codes) &&
     isOptionalStringArray(value.associated_codes)

@@ -18,6 +18,7 @@ import DataTable, { HeaderSpec } from "../composites/DataTable";
 import FilterWidget from "../primitives/FilterWidget";
 import { FourOhFour } from "../primitives/FourOhFour";
 
+import BatchName from "../primitives/BatchName";
 import ItemLabel from "../primitives/ItemLabel";
 import PrintButton from "../composites/PrintButton";
 import { Batch, Problem, Sku } from "../../api-client/data-models";
@@ -61,7 +62,7 @@ function BinContentsTable({
 
   let tabularData: {
     Identifier: string;
-    Name: string;
+    Name: React.ReactNode;
     Quantity: number;
     Type: string;
   }[];
@@ -75,7 +76,7 @@ function BinContentsTable({
         Identifier: row.id,
         Quantity: row.quantity,
         Type: row.kind,
-        Name: row.kind != "problem" ? row.item.state.name : null,
+        Name: row.kind != "problem" ? (row.item.kind === "batch" ? <BatchName id={row.id} batch={row.item.state} /> : row.item.state.name) : null,
       };
     });
   } else {

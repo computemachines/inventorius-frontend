@@ -25,6 +25,7 @@ import {
 
 import { stringifyUrl } from "query-string";
 import { Pager } from "../primitives/Pager";
+import BatchName from "../primitives/BatchName";
 import ItemLabel from "../primitives/ItemLabel";
 
 function resultToType(result: SearchResult): "SKU" | "BATCH" | "BIN" {
@@ -196,7 +197,7 @@ function SearchResultsList({
                 </h3>
                 {!isBinState(result) && (
                   <p className="mt-1 break-words text-slate-800">
-                    {result.name || (
+                    {isBatchState(result) ? <BatchName id={result.id} batch={result} /> : result.name || (
                       <span className="italic">Unnamed item</span>
                     )}
                   </p>

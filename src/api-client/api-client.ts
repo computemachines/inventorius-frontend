@@ -50,6 +50,9 @@ import type {
   ApplicationRootResource,
   AuthSessionResource,
   AuthSessionsResource,
+  AuthAccessTokensResource,
+  AuthAccessTokenCreatedResource,
+  AuthAccessToken,
   AuthVerificationResult,
   PasskeyCeremony,
   PasskeyCredentialJSON,
@@ -200,6 +203,9 @@ export class ApiClient {
       throw Error(`${this.hostname}/api/next/bin returned error status`);
     return new NextBin({
       ...json,
+      // The next-ID response is a read-only hint. Creation is a separate
+      // command and is no longer advertised on this response.
+      operations: json.operations ?? [],
       hostname: this.hostname,
       transport: this._fetch.bind(this),
     });
@@ -344,6 +350,60 @@ export class ApiClient {
     const response = await this._fetch(`${this.hostname}/api/auth/sessions`);
     if (!response.ok) throw new Error("Unable to read active sessions.");
     return response.json();
+  }
+
+  async getAccessTokens(): Promise<AuthAccessTokensResource> {
+    const response = await this._fetch(
+      `${this.hostname}/api/auth/access-tokens`,
+    );
+    if (!response.ok) throw new Error("Unable to read application tokens.");
+    return response.json();
+  }
+
+  async createAccessToken(
+    label: string,
+    expiresInDays: number,
+    allowInventoryChanges = false,
+    allowFileUploads = false,
+  ): Promise<AuthAccessTokenCreatedResource> {
+    const response = await this._fetch(
+      `${this.hostname}/api/auth/access-tokens`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label,
+          expires_in_days: expiresInDays,
+          allow_inventory_changes: allowInventoryChanges,
+          allow_file_uploads: allowFileUploads,
+        }),
+      },
+    );
+    const body = await response.json();
+    if (!response.ok) {
+      const error = new Error(
+        body?.title || "Unable to create application token.",
+      );
+      Object.assign(error, { problemType: body?.type });
+      throw error;
+    }
+    return body;
+  }
+
+  async revokeAccessToken(tokenId: string): Promise<AuthAccessToken> {
+    const response = await this._fetch(
+      `${this.hostname}/api/auth/access-tokens/${encodeURIComponent(tokenId)}`,
+      { method: "DELETE" },
+    );
+    const body = await response.json();
+    if (!response.ok) {
+      const error = new Error(
+        body?.title || "Unable to revoke application token.",
+      );
+      Object.assign(error, { problemType: body?.type });
+      throw error;
+    }
+    return body.state.token;
   }
 
   async getApplicationRoot(): Promise<ApplicationRootResource> {
